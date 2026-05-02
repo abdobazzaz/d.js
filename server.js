@@ -229,7 +229,7 @@ async function fetchStock() {
   Object.values(rows).forEach(slots => {
     slots.forEach(s => {
       stock[String(s.cargoway_num)] = {
-        vol:      s.goods_amount || 0,
+vol:      parseInt(s.goods_amount) || 0,
         capacity: 2,
         rowNum:   s.row_num,
         colNum:   s.col_num,
