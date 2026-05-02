@@ -1,0 +1,15 @@
+{
+  "name": "radwa-monitor",
+  "version": "1.0.0",
+  "description": "Radwa Smart Vending 24/7 Monitor & Daily Reports",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^2.7.0",
+    "nodemailer": "^6.9.7",
+    "exceljs": "^4.4.0"
+  }
+}
