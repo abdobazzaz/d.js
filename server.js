@@ -86,6 +86,11 @@ let STATE = {
 const mailer = nodemailer.createTransport({
   service: 'gmail',
   auth: { user: CFG.email.from, pass: CFG.email.pass },
+  pool: true,                  // reuse connections, faster after first send
+  maxConnections: 3,
+  connectionTimeout: 30000,    // 30s to establish connection (was default 10s)
+  greetingTimeout: 30000,      // 30s for SMTP greeting
+  socketTimeout: 60000,        // 60s for the whole transaction
 });
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
