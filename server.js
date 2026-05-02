@@ -5,7 +5,6 @@
 
 const express    = require('express');
 const fetch      = require('node-fetch');
-const nodemailer = require('nodemailer');
 const ExcelJS    = require('exceljs');
 const fs         = require('fs');
 const path       = require('path');
@@ -83,15 +82,6 @@ let STATE = {
 };
 
 // ── EMAIL TRANSPORTER ─────────────────────────────────────────────────────
-const mailer = nodemailer.createTransport({
-  service: 'gmail',
-  auth: { user: CFG.email.from, pass: CFG.email.pass },
-  pool: true,                  // reuse connections, faster after first send
-  maxConnections: 3,
-  connectionTimeout: 30000,    // 30s to establish connection (was default 10s)
-  greetingTimeout: 30000,      // 30s for SMTP greeting
-  socketTimeout: 60000,        // 60s for the whole transaction
-});
 
 // ── HELPERS ───────────────────────────────────────────────────────────────
 // Convert China time string to Saudi Date object
@@ -251,28 +241,62 @@ async function sendEmail(subject, htmlBody, attachments = []) {
   logAlert(subject, htmlBody.replace(/<[^>]+>/g,'').substring(0,200));
   console.log(`📧 Sending: ${subject}`);
 
-  const mailOptions = {
-    from:        `"${CFG.email.fromName}" <${CFG.email.from}>`,
-    to:          CFG.email.to,
-    subject:     `[Radwa] ${subject}`,
-    html:        htmlBody,
-    attachments,
-  };
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    logError('Email failed: RESEND_API_KEY env var is not set');
+    return;
+  }
 
-  // Try up to 3 times with a short delay between attempts
+  // Convert file attachments to base64 (Resend requires this format)
+  const resendAttachments = [];
+  for (const att of attachments) {
+    try {
+      const data = fs.readFileSync(att.path);
+      resendAttachments.push({
+        filename: att.filename,
+        content: data.toString('base64'),
+      });
+    } catch(e) {
+      logError(`Failed to read attachment ${att.filename}: ${e.message}`);
+    }
+  }
+
+  const payload = {
+    from:    `${CFG.email.fromName} <onboarding@resend.dev>`,
+    to:      [CFG.email.to],
+    subject: `[Radwa] ${subject}`,
+    html:    htmlBody,
+  };
+  if (resendAttachments.length > 0) payload.attachments = resendAttachments;
+
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      await mailer.sendMail(mailOptions);
-      console.log(`✅ Email sent! (attempt ${attempt})`);
-      return;
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type':  'application/json',
+        },
+        body: JSON.stringify(payload),
+        timeout: 30000,
+      });
+      const text = await res.text();
+      if (res.ok) {
+        console.log(`✅ Email sent! (attempt ${attempt})`);
+        return;
+      }
+      // 4xx errors are permanent — don't retry
+      if (res.status >= 400 && res.status < 500) {
+        logError(`Email rejected (${res.status}): ${text.substring(0, 300)}`);
+        return;
+      }
+      throw new Error(`HTTP ${res.status}: ${text.substring(0, 200)}`);
     } catch(e) {
-      const isTimeout = /timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED/i.test(e.message);
-      if (attempt < 3 && isTimeout) {
+      if (attempt < 3) {
         console.log(`⚠️  Email attempt ${attempt} failed (${e.message}), retrying in 5s...`);
         await new Promise(r => setTimeout(r, 5000));
       } else {
         logError(`Email failed after ${attempt} attempt(s): ${e.message}`);
-        return;
       }
     }
   }
