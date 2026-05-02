@@ -250,17 +250,31 @@ vol:      parseInt(s.goods_amount) || 0,
 async function sendEmail(subject, htmlBody, attachments = []) {
   logAlert(subject, htmlBody.replace(/<[^>]+>/g,'').substring(0,200));
   console.log(`📧 Sending: ${subject}`);
-  try {
-    await mailer.sendMail({
-      from:        `"${CFG.email.fromName}" <${CFG.email.from}>`,
-      to:          CFG.email.to,
-      subject:     `[Radwa] ${subject}`,
-      html:        htmlBody,
-      attachments,
-    });
-    console.log('✅ Email sent!');
-  } catch(e) {
-    logError(`Email failed: ${e.message}`);
+
+  const mailOptions = {
+    from:        `"${CFG.email.fromName}" <${CFG.email.from}>`,
+    to:          CFG.email.to,
+    subject:     `[Radwa] ${subject}`,
+    html:        htmlBody,
+    attachments,
+  };
+
+  // Try up to 3 times with a short delay between attempts
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await mailer.sendMail(mailOptions);
+      console.log(`✅ Email sent! (attempt ${attempt})`);
+      return;
+    } catch(e) {
+      const isTimeout = /timeout|ETIMEDOUT|ECONNRESET|ECONNREFUSED/i.test(e.message);
+      if (attempt < 3 && isTimeout) {
+        console.log(`⚠️  Email attempt ${attempt} failed (${e.message}), retrying in 5s...`);
+        await new Promise(r => setTimeout(r, 5000));
+      } else {
+        logError(`Email failed after ${attempt} attempt(s): ${e.message}`);
+        return;
+      }
+    }
   }
 }
 
