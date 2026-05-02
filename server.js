@@ -35,7 +35,7 @@ const CFG = {
   email: {
     from:    'abdobazzaz@gmail.com',
     pass:    'bxctdmamcgfsumyj',
-    to:      'abdobazzaz@hotmail.com',
+    to:      'abdobazzaz@gmail.com',
     fromName:'Radwa Smart Vending Monitor',
   },
 
