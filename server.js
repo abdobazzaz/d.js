@@ -159,23 +159,43 @@ async function apiFetch(path, opts = {}) {
 }
 
 async function login() {
-  const tries = [
-    { u:'/api/v1/login',          b:{ username:CFG.phone, password:CFG.password } },
-    { u:'/api/v1/login',          b:{ phone:CFG.phone,    password:CFG.password } },
-    { u:'/api/v1/merchant/login', b:{ phone:CFG.phone,    password:CFG.password } },
-    { u:'/api/v1/user/login',     b:{ mobile:CFG.phone,   password:CFG.password } },
-  ];
-  for (const t of tries) {
-    try {
-      const d = await apiFetch(t.u, { method:'POST', body: JSON.stringify(t.b) });
-      if (d.code===200 || d.success || d.token || d.data?.token) {
-        STATE.token = d.token || d.data?.token || '';
-        console.log('✅ Login OK');
-        return true;
-      }
-    } catch(e) { /* try next */ }
+  try {
+    const params = new URLSearchParams();
+    params.append('country_code', '971');
+    params.append('mobile', CFG.phone.replace(/^971/, ''));
+    params.append('password', CFG.password);
+    params.append('remember', 'false');
+
+    const res = await fetch(CFG.api + '/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+      timeout: 30000,
+    });
+
+    const sc = res.headers.get('set-cookie');
+    if (sc) STATE.cookie = sc;
+
+    const text = await res.text();
+    let d = {};
+    try { d = JSON.parse(text); } catch(e) {
+      logError(`Login non-JSON response (status ${res.status}): ${text.substring(0,200)}`);
+    }
+
+    const success = !!STATE.cookie || d.code === 200 || d.success === true || !!d.token || !!d.data?.token;
+
+    if (success) {
+      STATE.token = d.token || d.data?.token || '';
+      console.log(`✅ Login OK (cookie: ${STATE.cookie ? 'yes' : 'no'}, token: ${STATE.token ? 'yes' : 'no'})`);
+      return true;
+    }
+
+    logError(`Login rejected: status=${res.status}, body=${JSON.stringify(d).substring(0,200)}`);
+    return false;
+  } catch(e) {
+    logError(`Login error: ${e.message}`);
+    return false;
   }
-  return false;
 }
 
 async function fetchAllOrders() {
