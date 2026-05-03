@@ -1013,15 +1013,37 @@ async function doCheck() {
 
     // ── NEW SALE ALERTS ──
     const doneCount = done.length;
+    const startupTimeKSA = toKSATime(new Date(STATE.startTime.getTime() - 3*3600000).toISOString().replace('T',' ').substring(0,19));
+    const todayKSA = ksaNow.toISOString().substring(0,10);
+
     if (STATE.lastDoneCount > 0 && doneCount > STATE.lastDoneCount) {
-      const newOnes = done.slice(-( doneCount - STATE.lastDoneCount ));
-      for (const o of newOnes) {
+      // Don't trust array ordering — find genuinely new orders by filtering on timestamp:
+      // (a) order must be from today (KSA)
+      // (b) order must be paid AFTER the service started
+      const candidates = done.filter(o => {
+        const ksaPayTime = toKSATime(o.pay_time);
+        if (!ksaPayTime || ksaPayTime === '—') return false;
+        if (!ksaPayTime.startsWith(todayKSA)) return false;       // must be today
+        if (ksaPayTime < startupTimeKSA) return false;             // must be after startup
+        return true;
+      });
+
+      // Of those, only alert on ones we haven't already alerted on
+      STATE.alertedOrderIds = STATE.alertedOrderIds || new Set();
+      const trulyNew = candidates.filter(o => {
+        const id = o.order_no || o.id || `${o.pay_time}-${o.order_amount}`;
+        return !STATE.alertedOrderIds.has(id);
+      });
+
+      for (const o of trulyNew) {
         const g     = o.goods?.[0] || {};
         const prod  = getProductCode(g.goods_name||'');
         const apiS  = String(g.cargoway_num||o.cargoway_num||'');
         const slot  = CFG.slotMap[apiS] || apiS || '—';
         const price = parseFloat(g.sale_price||o.order_amount||0).toFixed(2);
         const ksaT  = toKSATime(o.pay_time);
+        const id    = o.order_no || o.id || `${o.pay_time}-${o.order_amount}`;
+
         await sendEmail(
           `✅ New Sale! ${prod?.name||'Unknown'}`,
           alertEmail('✅',`New Sale! ${prod?.emoji||''} ${prod?.name||'Unknown'}`,[
@@ -1032,6 +1054,13 @@ async function doCheck() {
             `Today's total: <strong>${STATE.stats.today.toFixed(2)} SAR (${STATE.stats.todayCount} orders)</strong>`,
           ])
         );
+
+        STATE.alertedOrderIds.add(id);
+      }
+
+      // Cap memory: keep only the most recent 500 alerted IDs
+      if (STATE.alertedOrderIds.size > 500) {
+        STATE.alertedOrderIds = new Set(Array.from(STATE.alertedOrderIds).slice(-500));
       }
     }
     STATE.lastDoneCount = doneCount;
