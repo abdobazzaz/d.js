@@ -1053,24 +1053,33 @@ async function doCheck() {
     }
 
     // ── SCHEDULE CHECK ──
-    // Check if it's time for daily report (09:30 KSA)
-    const h = now.getHours(), m = now.getMinutes();
-    if (h === 9 && m >= 30 && m < 35) {
-      const reportKey = `daily-${today}`;
+    // Compute current KSA time (UTC+3) using safe UTC math
+    const utcNow = new Date();
+    const ksaH   = (utcNow.getUTCHours() + 3) % 24;
+    const ksaM   = utcNow.getUTCMinutes();
+    const ksaDay = new Date(utcNow.getTime() + 3*3600000).getUTCDate();
+    const ksaToday = new Date(utcNow.getTime() + 3*3600000).toISOString().substring(0,10);
+    const ksaMon   = new Date(utcNow.getTime() + 3*3600000).toISOString().substring(0,7);
+
+    // Daily report at 09:30 KSA — fire any time between 09:30 and 09:59 (one-shot per day)
+    if (ksaH === 9 && ksaM >= 30) {
+      const reportKey = `daily-${ksaToday}`;
       if (!STATE.lastSkuAlerts[reportKey]) {
         STATE.lastSkuAlerts[reportKey] = true;
+        console.log(`📅 Triggering daily report (KSA ${ksaH}:${String(ksaM).padStart(2,'0')})`);
         sendDailyReport(now);
       }
     }
-    // Monthly report: 09:00 AM on 1st of month
-    if (now.getDate() === 1 && h === 9 && m >= 0 && m < 5) {
-      const monKey = `monthly-${mon}`;
+
+    // Monthly report at 09:00 KSA on 1st of month — fire any time between 09:00 and 09:29 (one-shot per month)
+    if (ksaDay === 1 && ksaH === 9 && ksaM < 30) {
+      const monKey = `monthly-${ksaMon}`;
       if (!STATE.lastSkuAlerts[monKey]) {
         STATE.lastSkuAlerts[monKey] = true;
+        console.log(`📅 Triggering monthly report (KSA ${ksaH}:${String(ksaM).padStart(2,'0')})`);
         sendMonthlyReport();
       }
     }
-
   } catch(e) {
     logError(`Check failed: ${e.message}`);
     if (e.message.includes('401') || e.message.includes('403')) STATE.token = '';
