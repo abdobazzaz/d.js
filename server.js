@@ -72,9 +72,6 @@ let STATE = {
   lastSkuAlerts:  {}, // track per-SKU alerts
   firstStockCheck: true, // suppress alerts on the first check after startup
   lastCheck:      null,
-  const rawConn = d.connect_time || dd.connect_time || '';
-  const ksaConn = rawConn ? toKSATime(rawConn) : '—';
-  return { temp, online, lastConn: ksaConn, fault:d.fault_code||'0' };
   stock:          {}, // current slot volumes
   stats:          { today:0, todayCount:0, month:0, monCount:0, totalDone:0, total:0 },
   alerts:         [], // recent alerts log
@@ -217,6 +214,8 @@ async function fetchMachine() {
   const dd = detr?.data || {};
   const temp   = parseInt(d.device_temp ?? dd.device_temp ?? -17);
   const online = d.status==='0' || (d.connect_time||'').substring(0,4) >= '2025';
+  const rawConn = d.connect_time || dd.connect_time || '';
+  const ksaConn = rawConn ? toKSATime(rawConn) : '—';
   const rawConn = d.connect_time || dd.connect_time || '';
   const ksaConn = rawConn ? toKSATime(rawConn) : '—';
   return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0' };
