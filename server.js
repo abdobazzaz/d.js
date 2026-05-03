@@ -1147,14 +1147,18 @@ app.get('/', (req, res) => {
 
   res.send(`<!DOCTYPE html>
 <html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="refresh" content="60"><title>Radwa Monitor</title>
+<meta http-equiv="refresh" content="60"><title>Radwa Vending Machine Monitor</title>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Cairo',sans-serif;background:#F8F1E7;color:#1C2E08;padding:0}
-.nav{background:linear-gradient(135deg,#1B3F8B,#5A9E1E);padding:14px 20px;display:flex;align-items:center;justify-content:space-between}
-.logo{color:#fff;font-weight:900;font-size:18px;letter-spacing:2px}
-.nav-r{color:rgba(255,255,255,.7);font-size:12px;text-align:right}
+.nav{background:#F8F1E7;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #F5A623;flex-wrap:wrap;gap:12px}
+.nav-l{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand-logo{width:48px;height:48px;object-fit:contain}
+.brand-text{font-size:24px;font-weight:900;color:#1B3F8B;letter-spacing:3px}
+.brand-title{color:#1B3F8B;font-size:15px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
+.nav-r{color:#7A9660;font-size:11px;text-align:right;display:flex;flex-direction:column;gap:3px;font-weight:700}
+.nav-stat{background:#fff;padding:5px 11px;border-radius:14px;border:1.5px solid #E8D5B7;font-family:Cairo,sans-serif}
 .wrap{max-width:960px;margin:20px auto;padding:0 16px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .card{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
@@ -1175,8 +1179,15 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 </style></head>
 <body>
 <div class="nav">
-  <div class="logo">☀️ RADWA MONITOR</div>
-  <div class="nav-r">Auto-refresh: 60s<br>Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
+  <div class="nav-l">
+    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/logo.png" alt="Radwa" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+    <span class="brand-text" style="display:none">RADWA</span>
+    <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
+  </div>
+  <div class="nav-r">
+    <div class="nav-stat">🔄 Auto-refresh: 60s</div>
+    <div class="nav-stat">⏱️ Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
+  </div>
 </div>
 <div class="wrap">
    <div class="grid">
@@ -1450,7 +1461,12 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
   </div>`:''}
 
 </div>
-<footer>RADWA SMART VENDING MONITOR v1.0 · ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12: true })} KSA · Checks every 5 min</footer>
+<footer style="background:#1B3F8B;color:rgba(255,255,255,.85);padding:18px 24px;margin-top:24px;text-align:center;font-size:12px;letter-spacing:1.5px;font-weight:700">
+  RADWA VENDING MACHINE MONITOR
+  <div style="color:rgba(255,255,255,.55);font-size:10px;font-weight:400;letter-spacing:1px;margin-top:4px;text-transform:none">
+    ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12: true })} KSA · Checks every 5 minutes · Machine ${CFG.deviceId}
+  </div>
+</footer>
 </body></html>`);
 });
 
