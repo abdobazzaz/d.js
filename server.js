@@ -217,9 +217,10 @@ async function fetchMachine() {
   const dd = detr?.data || {};
   const temp   = parseInt(d.device_temp ?? dd.device_temp ?? -17);
   const online = d.status==='0' || (d.connect_time||'').substring(0,4) >= '2025';
-  return { temp, online, lastConn:(d.connect_time||dd.connect_time||'—').substring(0,16), fault:d.fault_code||'0' };
+  const rawConn = d.connect_time || dd.connect_time || '';
+  const ksaConn = rawConn ? toKSATime(rawConn) : '—';
+  return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0' };
 }
-
 async function fetchStock() {
   const d = await apiFetch(`/api/v1//devices/${CFG.deviceId}/cargoways`);
   const rows = d?.data?.cargoways || {};
