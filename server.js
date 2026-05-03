@@ -70,6 +70,7 @@ let STATE = {
   lastTempAlert:  false,
   lastDoneCount:  0,
   lastSkuAlerts:  {}, // track per-SKU alerts
+  firstStockCheck: true, // suppress alerts on the first check after startup
   lastCheck:      null,
   machine:        { temp:-17, online:true, lastConn:'—', fault:'0' },
   stock:          {}, // current slot volumes
@@ -1039,25 +1040,41 @@ async function doCheck() {
       const totalUnits = prod.slots.reduce((s,sl)=>s+(stock[sl]?.vol||0),0);
       const key = prod.code;
 
-      if (totalUnits === 0 && STATE.lastSkuAlerts[key] !== 'empty') {
+      // Determine current state
+      const currentState = totalUnits === 0 ? 'empty'
+                         : totalUnits <= 2 ? 'low'
+                         : 'ok';
+
+      // On first check after startup, just record state — don't email
+      if (STATE.firstStockCheck) {
+        STATE.lastSkuAlerts[key] = currentState;
+        continue;
+      }
+
+      // On subsequent checks, only alert when state changes to a worse state
+      if (currentState === 'empty' && STATE.lastSkuAlerts[key] !== 'empty') {
         await sendEmail(`📦 ${prod.code} is EMPTY!`, alertEmail('📦',`${prod.emoji} ${prod.code} is EMPTY!`,[
           `<strong>${prod.name}</strong> has reached <strong>0 units</strong>!`,
           `Slots: ${prod.slots.map(s=>CFG.slotMap[s]||s).join(', ')}`,
           'Please replenish immediately.',
         ]));
-        STATE.lastSkuAlerts[key] = 'empty';
-      } else if (totalUnits > 0 && totalUnits <= 2 && STATE.lastSkuAlerts[key] !== 'low') {
+      } else if (currentState === 'low' && STATE.lastSkuAlerts[key] === 'ok') {
+        // Only alert "low" when transitioning from OK → low (not from empty → low, that's improvement)
         await sendEmail(`⚠️ ${prod.code} Low Stock (${totalUnits} units)`, alertEmail('⚠️',`${prod.emoji} ${prod.code} Low Stock!`,[
           `<strong>${prod.name}</strong> has only <strong>${totalUnits} unit${totalUnits!==1?'s':''}</strong> remaining!`,
           `Slots: ${prod.slots.map(s=>`${CFG.slotMap[s]||s}:${stock[s]?.vol||0}`).join(' ')}`,
           'Consider replenishing soon.',
         ]));
-        STATE.lastSkuAlerts[key] = 'low';
-      } else if (totalUnits >= CFG.stockOkMin) {
-        STATE.lastSkuAlerts[key] = 'ok';
       }
+
+      STATE.lastSkuAlerts[key] = currentState;
     }
 
+    // After the first check, all subsequent checks behave normally
+    if (STATE.firstStockCheck) {
+      STATE.firstStockCheck = false;
+      console.log('✅ First stock check complete — alerts now active');
+    }
     // ── SCHEDULE CHECK ──
     // Compute current KSA time (UTC+3) using safe UTC math
     const utcNow = new Date();
