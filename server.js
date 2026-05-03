@@ -1184,7 +1184,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     <div class="card" style="border-top:3px solid ${pC}">
       <div class="ci">${online?'🟢':'🔴'}</div><div class="cl">Machine Power</div>
       <div class="cv" style="color:${pC}">${online?'ONLINE':'OFFLINE'}</div>
-      <div class="cs">Last: ${lastConn}</div>
+      <div class="cs">Last: ${lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
     </div>
 
     <!-- 2. Temperature -->
