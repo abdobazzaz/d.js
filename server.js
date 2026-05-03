@@ -72,7 +72,9 @@ let STATE = {
   lastSkuAlerts:  {}, // track per-SKU alerts
   firstStockCheck: true, // suppress alerts on the first check after startup
   lastCheck:      null,
-  machine:        { temp:-17, online:true, lastConn:'—', fault:'0' },
+  const rawConn = d.connect_time || dd.connect_time || '';
+  const ksaConn = rawConn ? toKSATime(rawConn) : '—';
+  return { temp, online, lastConn: ksaConn, fault:d.fault_code||'0' };
   stock:          {}, // current slot volumes
   stats:          { today:0, todayCount:0, month:0, monCount:0, totalDone:0, total:0 },
   alerts:         [], // recent alerts log
