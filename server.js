@@ -1150,46 +1150,70 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
   <div class="nav-r">Auto-refresh: 60s<br>Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
 </div>
 <div class="wrap">
-  <div class="grid">
+   <div class="grid">
+    <!-- 1. Machine Power -->
     <div class="card" style="border-top:3px solid ${pC}">
       <div class="ci">${online?'🟢':'🔴'}</div><div class="cl">Machine Power</div>
       <div class="cv" style="color:${pC}">${online?'ONLINE':'OFFLINE'}</div>
       <div class="cs">Last: ${lastConn}</div>
     </div>
+
+    <!-- 2. Temperature -->
     <div class="card" style="border-top:3px solid ${tC}">
       <div class="ci">🌡️</div><div class="cl">Temperature</div>
       <div class="cv" style="color:${tC}">${temp}°C</div>
-      <div class="cs">${temp>=CFG.tempAlert?'⚠️ CRITICAL':'✓ Normal'} · Alert: ${CFG.tempAlert}°C</div>
+      <div class="cs">${temp>=CFG.tempAlert?'⚠️ CRITICAL':'✓ Normal'} · Last: ${STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
     </div>
-    <div class="card" style="border-top:3px solid #5A9E1E">
-      <div class="ci">💰</div><div class="cl">Today Revenue</div>
-      <div class="cv" style="color:#5A9E1E">${STATE.stats.today.toFixed(2)} SAR</div>
-      <div class="cs">${STATE.stats.todayCount} orders today</div>
-    </div>
-    <div class="card" style="border-top:3px solid #1B3F8B">
-      <div class="ci">📦</div><div class="cl">This Month</div>
-      <div class="cv" style="color:#1B3F8B">${STATE.stats.month.toFixed(2)} SAR</div>
-      <div class="cs">${STATE.stats.monCount} orders</div>
-    </div>
-      <div class="card" style="border-top:3px solid #F5A623">
-      <div class="ci">✅</div>
-      <div class="cl">Completed Today</div>
-      <div class="cv" style="color:#F5A623">${STATE.stats.todayCount}</div>
-      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'short' })}</div>
-    </div>
-    <div class="card" style="border-top:3px solid #1B3F8B">
-      <div class="ci">📅</div>
-      <div class="cl">Completed This Month</div>
-      <div class="cv" style="color:#1B3F8B">${STATE.stats.monCount}</div>
-      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' })}</div>
-    </div>
+
+    <!-- 3. Total Units (NEW) -->
+    ${(() => {
+      const totalUnits = CFG.products.reduce((s,p) => s + p.slots.reduce((ss,sl) => ss + (STATE.stock[sl]?.vol || 0), 0), 0);
+      const totalCap   = CFG.products.reduce((s,p) => s + (p.code === 'EFMC06' ? 12 : 8), 0);
+      const pct        = totalCap > 0 ? Math.round(totalUnits/totalCap*100) : 0;
+      const uColor     = totalUnits === 0 ? '#C8002A' : totalUnits < totalCap*0.3 ? '#E07020' : '#5A9E1E';
+      return `
+    <div class="card" style="border-top:3px solid ${uColor}">
+      <div class="ci">📦</div><div class="cl">Total Units in Machine</div>
+      <div class="cv" style="color:${uColor}">${totalUnits} / ${totalCap}</div>
+      <div class="cs">${pct}% full · Last: ${STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
+    </div>`;
+    })()}
+
+    <!-- 4. Alerts Sent -->
     <div class="card" style="border-top:3px solid #7A9660">
       <div class="ci">📧</div><div class="cl">Alerts Sent</div>
       <div class="cv" style="color:#7A9660">${STATE.alerts.length}</div>
       <div class="cs">to ${CFG.email.to}</div>
     </div>
-  </div>
 
+    <!-- 5. Today Revenue -->
+    <div class="card" style="border-top:3px solid #5A9E1E">
+      <div class="ci">💰</div><div class="cl">Today Revenue</div>
+      <div class="cv" style="color:#5A9E1E">${STATE.stats.today.toFixed(2)} SAR</div>
+      <div class="cs">${STATE.stats.todayCount} orders today</div>
+    </div>
+
+    <!-- 6. This Month -->
+    <div class="card" style="border-top:3px solid #1B3F8B">
+      <div class="ci">💵</div><div class="cl">This Month</div>
+      <div class="cv" style="color:#1B3F8B">${STATE.stats.month.toFixed(2)} SAR</div>
+      <div class="cs">${STATE.stats.monCount} orders</div>
+    </div>
+
+    <!-- 7. Completed Today -->
+    <div class="card" style="border-top:3px solid #F5A623">
+      <div class="ci">✅</div><div class="cl">Completed Today</div>
+      <div class="cv" style="color:#F5A623">${STATE.stats.todayCount}</div>
+      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'short' })}</div>
+    </div>
+
+    <!-- 8. Completed This Month -->
+    <div class="card" style="border-top:3px solid #1B3F8B">
+      <div class="ci">📅</div><div class="cl">Completed This Month</div>
+      <div class="cv" style="color:#1B3F8B">${STATE.stats.monCount}</div>
+      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' })}</div>
+    </div>
+  </div>
   <div class="sec">
     <div class="sh" style="background:#1B3F8B">⚙️ Monitor Status</div>
     <div class="sb">
