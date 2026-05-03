@@ -1180,8 +1180,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 <body>
 <div class="nav">
   <div class="nav-l">
-    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa" class="brand-logo" onerror="this.style.display='none';this.nextElementSi...
-    <span class="brand-text" style="display:none">RADWA</span>
+   <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa" class="brand-logo">
     <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
   </div>
   <div class="nav-r">
