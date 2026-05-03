@@ -1014,7 +1014,6 @@ async function doCheck() {
     // ── NEW SALE ALERTS ──
     const doneCount = done.length;
     const startupTimeKSA = toKSATime(new Date(STATE.startTime.getTime() - 3*3600000).toISOString().replace('T',' ').substring(0,19));
-    const todayKSA = ksaNow.toISOString().substring(0,10);
 
     if (STATE.lastDoneCount > 0 && doneCount > STATE.lastDoneCount) {
       // Don't trust array ordering — find genuinely new orders by filtering on timestamp:
