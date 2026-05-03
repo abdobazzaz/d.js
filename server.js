@@ -216,8 +216,6 @@ async function fetchMachine() {
   const online = d.status==='0' || (d.connect_time||'').substring(0,4) >= '2025';
   const rawConn = d.connect_time || dd.connect_time || '';
   const ksaConn = rawConn ? toKSATime(rawConn) : '—';
-  const rawConn = d.connect_time || dd.connect_time || '';
-  const ksaConn = rawConn ? toKSATime(rawConn) : '—';
   return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0' };
 }
 async function fetchStock() {
