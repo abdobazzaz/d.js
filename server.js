@@ -973,7 +973,8 @@ async function doCheck() {
       monCount:   monD.length,
       totalDone:  done.length,
       total:      allOrders.length,
-      todayOrders: todayD,  // ← NEW: store the actual orders array for the dashboard tables
+      todayOrders: todayD,  // store today's orders for the dashboard tables
+      monthOrders: monD,    // store this month's orders for the dashboard tables
     };
 
     console.log(`⚡ ${online?'ONLINE':'OFFLINE'} | 🌡️ ${temp}°C | ✅ ${done.length} orders`);
@@ -1343,6 +1344,61 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       }).join('')}
     </div>
   </div>
+    ${(() => {
+    const monthOrders = STATE.stats.monthOrders || [];
+    const totalRev = monthOrders.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
+    const monthLabel = new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' });
+
+    // Sort newest first so the latest sales are at the top
+    const sorted = [...monthOrders].sort((a,b) => (b.pay_time||'').localeCompare(a.pay_time||''));
+
+    const purRows = sorted.length === 0
+      ? `<tr><td colspan="6" style="padding:20px;text-align:center;color:#7A9660;font-size:12px">No completed orders this month yet</td></tr>`
+      : sorted.map((o,i) => {
+          const g = o.goods?.[0] || {};
+          const prod = getProductCode(g.goods_name||'');
+          const apiS = String(g.cargoway_num || o.cargoway_num || '');
+          const slot = CFG.slotMap[apiS] || apiS || '—';
+          const ksaT = toKSATime(o.pay_time);
+          const ksaDate = ksaT.substring(0,10);
+          const ksaTime = ksaT.substring(11);
+          const price = parseFloat(g.sale_price || o.order_amount || 0).toFixed(2);
+          return `<tr style="border-bottom:1px solid #F0E4D0">
+            <td style="padding:8px 10px;text-align:center;color:#7A9660;font-size:11px">${i+1}</td>
+            <td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#F5A623;font-size:10px">${prod?.code||'—'}</td>
+            <td style="padding:8px 10px;font-weight:700;color:#1C2E08;font-size:11px">${prod?.emoji||''} ${prod?.name||g.goods_name||'—'}</td>
+            <td style="padding:8px 10px;text-align:center"><span style="background:#EEF5E8;color:#5A9E1E;padding:2px 7px;border-radius:4px;font-family:monospace;font-size:10px;font-weight:700">${slot}</span></td>
+            <td style="padding:8px 10px;text-align:center;font-size:11px"><div style="color:#1B3F8B;font-weight:700">${ksaTime}</div><div style="color:#7A9660;font-size:9px">${ksaDate}</div></td>
+            <td style="padding:8px 10px;text-align:right;font-weight:900;color:#5A9E1E;font-size:12px">${price} SAR</td>
+          </tr>`;
+        }).join('');
+
+    return `
+  <div class="sec">
+    <div class="sh" style="background:#1B3F8B">📅 This Month's All Purchases · ${monthLabel} (${sorted.length})</div>
+    <div class="sb" style="padding:0;overflow-x:auto;max-height:600px;overflow-y:auto">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;min-width:560px">
+        <thead><tr style="background:#1B3F8B;position:sticky;top:0;z-index:1">
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">#</th>
+          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">CODE</th>
+          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">PRODUCT</th>
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">SLOT</th>
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">DATE / TIME (KSA)</th>
+          <th style="padding:9px 10px;text-align:right;color:#fff;font-size:9px;letter-spacing:1px">PRICE</th>
+        </tr></thead>
+        <tbody>
+          ${purRows}
+          ${sorted.length > 0 ? `
+          <tr style="background:#D0DCF5">
+            <td colspan="5" style="padding:11px 12px;font-weight:900;color:#1B3F8B;font-size:12px">TOTAL · ${sorted.length} order${sorted.length!==1?'s':''}</td>
+            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:14px">${totalRev.toFixed(2)} SAR</td>
+          </tr>` : ''}
+        </tbody>
+      </table>
+    </div>
+  </div>
+`;
+  })()}
 
   <div class="sec">
     <div class="sh" style="background:#F5A623">📧 Recent Alerts (${STATE.alerts.length})</div>
