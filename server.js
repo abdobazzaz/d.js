@@ -1154,7 +1154,7 @@ app.get('/', (req, res) => {
 body{font-family:'Cairo',sans-serif;background:#F8F1E7;color:#1C2E08;padding:0}
 .nav{background:#F8F1E7;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #F5A623;flex-wrap:wrap;gap:12px}
 .nav-l{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.brand-logo{width:48px;height:48px;object-fit:contain}
+.brand-logo{height:64px;width:auto;object-fit:contain;flex-shrink:0}
 .brand-text{font-size:24px;font-weight:900;color:#1B3F8B;letter-spacing:3px}
 .brand-title{color:#1B3F8B;font-size:15px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
 .nav-r{color:#7A9660;font-size:11px;text-align:right;display:flex;flex-direction:column;gap:3px;font-weight:700}
@@ -1180,7 +1180,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 <body>
 <div class="nav">
   <div class="nav-l">
-    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/logo.png" alt="Radwa" class="brand-logo" onerror="this.style.display='none';this.nextElementSibling.style.display='inline-block'">
+    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa" class="brand-logo" onerror="this.style.display='none';this.nextElementSi...
     <span class="brand-text" style="display:none">RADWA</span>
     <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
   </div>
