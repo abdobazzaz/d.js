@@ -956,10 +956,15 @@ async function doCheck() {
     STATE.tempLog  = STATE.tempLog.filter(l => l.time > cutoff);
     STATE.powerLog = STATE.powerLog.filter(l => l.time > cutoff);
 
+    // KSA today/month strings (timezone-safe)
+    const ksaNow   = new Date(Date.now() + 3*3600000);
+    const todayKSA = ksaNow.toISOString().substring(0,10);  // YYYY-MM-DD
+    const monKSA   = ksaNow.toISOString().substring(0,7);   // YYYY-MM
+
     // Stats
     const done     = allOrders.filter(o => o.order_status == 5);
-    const todayD   = done.filter(o => toKSATime(o.pay_time).startsWith(today));
-    const monD     = done.filter(o => toKSATime(o.pay_time).startsWith(mon));
+    const todayD   = done.filter(o => toKSATime(o.pay_time).startsWith(todayKSA));
+    const monD     = done.filter(o => toKSATime(o.pay_time).startsWith(monKSA));
     STATE.stats = {
       today:      todayD.reduce((s,o)=>s+parseFloat(o.order_amount||0),0),
       todayCount: todayD.length,
@@ -967,6 +972,7 @@ async function doCheck() {
       monCount:   monD.length,
       totalDone:  done.length,
       total:      allOrders.length,
+      todayOrders: todayD,  // ← NEW: store the actual orders array for the dashboard tables
     };
 
     console.log(`⚡ ${online?'ONLINE':'OFFLINE'} | 🌡️ ${temp}°C | ✅ ${done.length} orders`);
@@ -1186,6 +1192,104 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     </div>
   </div>
 
+    ${(() => {
+    const todayOrders = STATE.stats.todayOrders || [];
+    const totalRev = todayOrders.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
+
+    // Build SKU summary for today
+    const skuSum = {};
+    CFG.products.forEach(p => { skuSum[p.code] = { count:0, rev:0 }; });
+    todayOrders.forEach(o => {
+      const g = o.goods?.[0] || {};
+      const p = getProductCode(g.goods_name||'');
+      if (p) {
+        skuSum[p.code].count++;
+        skuSum[p.code].rev += parseFloat(o.order_amount||0);
+      }
+    });
+
+    const todayLabel = new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'long', year:'numeric' });
+
+    // Table 1: SKU Summary
+    const skuRows = CFG.products.map(p => {
+      const s = skuSum[p.code];
+      const has = s.count > 0;
+      return `<tr style="border-bottom:1px solid #F0E4D0">
+        <td style="padding:9px 12px;font-family:monospace;font-weight:700;color:#F5A623;font-size:11px">${p.code}</td>
+        <td style="padding:9px 12px;font-weight:${has?'700':'400'};color:${has?'#1C2E08':'#999'};font-size:12px">${p.emoji} ${p.name}</td>
+        <td style="padding:9px 12px;text-align:center"><span style="background:${has?'#1B3F8B':'#F0F0F0'};color:${has?'#fff':'#999'};padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700">${s.count}</span></td>
+        <td style="padding:9px 12px;text-align:right;font-weight:${has?'900':'400'};color:${has?'#5A9E1E':'#999'};font-size:12px">${s.rev.toFixed(2)} SAR</td>
+      </tr>`;
+    }).join('');
+
+    // Table 2: All Purchases
+    const purRows = todayOrders.length === 0
+      ? `<tr><td colspan="6" style="padding:20px;text-align:center;color:#7A9660;font-size:12px">No completed orders today yet</td></tr>`
+      : todayOrders.map((o,i) => {
+          const g = o.goods?.[0] || {};
+          const prod = getProductCode(g.goods_name||'');
+          const apiS = String(g.cargoway_num || o.cargoway_num || '');
+          const slot = CFG.slotMap[apiS] || apiS || '—';
+          const ksaT = toKSATime(o.pay_time).substring(11);
+          const price = parseFloat(g.sale_price || o.order_amount || 0).toFixed(2);
+          return `<tr style="border-bottom:1px solid #F0E4D0">
+            <td style="padding:8px 10px;text-align:center;color:#7A9660;font-size:11px">${i+1}</td>
+            <td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#F5A623;font-size:10px">${prod?.code||'—'}</td>
+            <td style="padding:8px 10px;font-weight:700;color:#1C2E08;font-size:11px">${prod?.emoji||''} ${prod?.name||g.goods_name||'—'}</td>
+            <td style="padding:8px 10px;text-align:center"><span style="background:#EEF5E8;color:#5A9E1E;padding:2px 7px;border-radius:4px;font-family:monospace;font-size:10px;font-weight:700">${slot}</span></td>
+            <td style="padding:8px 10px;text-align:center;font-weight:700;color:#1B3F8B;font-size:12px">${ksaT}</td>
+            <td style="padding:8px 10px;text-align:right;font-weight:900;color:#5A9E1E;font-size:12px">${price} SAR</td>
+          </tr>`;
+        }).join('');
+
+    return `
+  <div class="sec">
+    <div class="sh" style="background:#5A9E1E">📦 Today's SKU Summary · ${todayLabel}</div>
+    <div class="sb" style="padding:0">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
+        <thead><tr style="background:#1B3F8B">
+          <th style="padding:10px 12px;text-align:left;color:#fff;font-size:10px;letter-spacing:1px">CODE</th>
+          <th style="padding:10px 12px;text-align:left;color:#fff;font-size:10px;letter-spacing:1px">PRODUCT</th>
+          <th style="padding:10px 12px;text-align:center;color:#fff;font-size:10px;letter-spacing:1px">QTY SOLD</th>
+          <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10px;letter-spacing:1px">REVENUE</th>
+        </tr></thead>
+        <tbody>
+          ${skuRows}
+          <tr style="background:#FDF0D8">
+            <td colspan="2" style="padding:11px 12px;font-weight:900;color:#1C2E08;font-size:13px">🏆 GRAND TOTAL</td>
+            <td style="padding:11px 12px;text-align:center"><span style="background:#1B3F8B;color:#fff;padding:4px 14px;border-radius:14px;font-size:13px;font-weight:900">${todayOrders.length}</span></td>
+            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:16px">${totalRev.toFixed(2)} SAR</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sec">
+    <div class="sh" style="background:#1B3F8B">✅ Today's All Purchases (${todayOrders.length})</div>
+    <div class="sb" style="padding:0;overflow-x:auto">
+      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;min-width:560px">
+        <thead><tr style="background:#1B3F8B">
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">#</th>
+          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">CODE</th>
+          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">PRODUCT</th>
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">SLOT</th>
+          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">TIME (KSA)</th>
+          <th style="padding:9px 10px;text-align:right;color:#fff;font-size:9px;letter-spacing:1px">PRICE</th>
+        </tr></thead>
+        <tbody>
+          ${purRows}
+          ${todayOrders.length > 0 ? `
+          <tr style="background:#D0DCF5">
+            <td colspan="5" style="padding:11px 12px;font-weight:900;color:#1B3F8B;font-size:12px">TOTAL · ${todayOrders.length} order${todayOrders.length!==1?'s':''}</td>
+            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:14px">${totalRev.toFixed(2)} SAR</td>
+          </tr>` : ''}
+        </tbody>
+      </table>
+    </div>
+  </div>
+`;
+  })()}
   <div class="sec">
     <div class="sh" style="background:#5A9E1E">📦 Current Stock (${Object.keys(STATE.stock).length} slots)</div>
     <div class="sb">
