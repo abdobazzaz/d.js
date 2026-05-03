@@ -1148,10 +1148,17 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       <div class="cv" style="color:#1B3F8B">${STATE.stats.month.toFixed(2)} SAR</div>
       <div class="cs">${STATE.stats.monCount} orders</div>
     </div>
-    <div class="card" style="border-top:3px solid #F5A623">
-      <div class="ci">✅</div><div class="cl">Total Completed</div>
-      <div class="cv" style="color:#F5A623">${STATE.stats.totalDone}</div>
-      <div class="cs">${STATE.stats.total} total orders</div>
+      <div class="card" style="border-top:3px solid #F5A623">
+      <div class="ci">✅</div>
+      <div class="cl">Completed Today</div>
+      <div class="cv" style="color:#F5A623">${STATE.stats.todayCount}</div>
+      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'short' })}</div>
+    </div>
+    <div class="card" style="border-top:3px solid #1B3F8B">
+      <div class="ci">📅</div>
+      <div class="cl">Completed This Month</div>
+      <div class="cv" style="color:#1B3F8B">${STATE.stats.monCount}</div>
+      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' })}</div>
     </div>
     <div class="card" style="border-top:3px solid #7A9660">
       <div class="ci">📧</div><div class="cl">Alerts Sent</div>
@@ -1165,7 +1172,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     <div class="sb">
       ${[
         ['Status','🟢 Running 24/7'],
-        ['Last Check', STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString() : 'Starting...'],
+        ['Last Check', STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: true }) + ' KSA' : 'Starting...'],
         ['Check Interval','Every 5 minutes'],
         ['Machine ID', CFG.deviceId],
         ['Location', CFG.location],
@@ -1199,7 +1206,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
         ? '<div style="text-align:center;color:#7A9660;padding:16px">No alerts yet · All good! ✅</div>'
         : STATE.alerts.slice(0,20).map(a=>`
           <div class="ar">
-            <span class="at">${new Date(a.time).toLocaleString()}</span>
+            <span class="at">${new Date(a.time).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12: true })}</span>
             <span class="as">${a.subject}</span>
           </div>`).join('')}
     </div>
@@ -1209,12 +1216,12 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
   <div class="sec">
     <div class="sh" style="background:#C8002A">⚠️ Recent Errors</div>
     <div class="sb">
-      ${STATE.errors.slice(0,10).map(e=>`<div class="er">${new Date(e.time).toLocaleString()} — ${e.msg}</div>`).join('')}
+      ${STATE.errors.slice(0,10).map(e=>`<div class="er">${new Date(e.time).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12: true })} — ${e.msg}</div>`).join('')}
     </div>
   </div>`:''}
 
 </div>
-<footer>RADWA SMART VENDING MONITOR v1.0 · ${new Date().toLocaleString()} · Checks every 5 min</footer>
+<footer>RADWA SMART VENDING MONITOR v1.0 · ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12: true })} KSA · Checks every 5 min</footer>
 </body></html>`);
 });
 
