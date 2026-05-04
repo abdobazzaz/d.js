@@ -575,8 +575,7 @@ function buildDailyHtml(dayOrders, skuSummary, closingStock, machine, dateLabel,
 
   <!-- HEADER -->
   <div style="background:#F8F1E7;padding:24px 30px 20px;text-align:center;border-bottom:3px solid #F5A623">
-    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/logo.png" alt="Radwa" style="width:180px;height:auto;margin-bottom:10px" onerror="this.style.display='none'">
-    <div style="color:#1B3F8B;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:700">Smart Vending Daily Report</div>
+    <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa" style="width:180px;height:auto;margin-bottom:10px" onerror="this.style.display='none'">    <div style="color:#1B3F8B;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;font-weight:700">Smart Vending Daily Report</div>
     <div style="background:#1B3F8B;border-radius:20px;padding:7px 20px;display:inline-block">
       <span style="color:#fff;font-size:13px;font-weight:700">📅 ${dateLabel} &nbsp;·&nbsp; Dahban Machine</span>
     </div>
