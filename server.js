@@ -73,6 +73,7 @@ let STATE = {
   firstStockCheck: true, // suppress alerts on the first check after startup
   lastCheck:      null,
   stock:          {}, // current slot volumes
+  machine:        { temp: -17, online: false, lastConn: '—', ip: '—', registered: false },
   stats:          { today:0, todayCount:0, month:0, monCount:0, totalDone:0, total:0 },
   alerts:         [], // recent alerts log
   errors:         [], // recent errors log
@@ -216,7 +217,9 @@ async function fetchMachine() {
   const online = d.status==='0' || (d.connect_time||'').substring(0,4) >= '2025';
   const rawConn = d.connect_time || dd.connect_time || '';
   const ksaConn = rawConn ? toKSATime(rawConn) : '—';
-  return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0' };
+  const ip = d.device_ip || d.ip || dd.device_ip || dd.ip || '—';
+  const registered = !!(d.register_status === 1 || d.is_register === 1 || dd.register_status === 1 || dd.is_register === 1 || d.bind_status === 1 || dd.bind_status === 1 || online);
+  return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
 }
 async function fetchStock() {
   const d = await apiFetch(`/api/v1//devices/${CFG.deviceId}/cargoways`);
@@ -1140,7 +1143,7 @@ async function doCheck() {
 // ── WEB DASHBOARD ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   const up = process.uptime();
-  const { temp, online, lastConn } = STATE.machine;
+  const { temp, online, lastConn, ip, registered } = STATE.machine;
   const pC = online ? '#5A9E1E' : '#C8002A';
   const tC = temp >= CFG.tempAlert ? '#C8002A' : '#1B3F8B';
 
@@ -1196,7 +1199,18 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       <div class="cs">Last: ${lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
     </div>
 
-    <!-- 2. Temperature -->
+    <!-- 2. IP / Registration -->
+    ${(() => {
+      const rC = registered ? '#5A9E1E' : '#C8002A';
+      const ipDisplay = ip !== '—' ? ip : 'No IP';
+      return `<div class="card" style="border-top:3px solid ${rC}">
+      <div class="ci">🌐</div><div class="cl">Connection / IP</div>
+      <div class="cv" style="color:${rC};font-size:14px">${registered?'✅ Registered':'❌ Not Registered'}</div>
+      <div class="cs">IP: ${ipDisplay}</div>
+    </div>`;
+    })()}
+
+    <!-- 3. Temperature -->
     <div class="card" style="border-top:3px solid ${tC}">
       <div class="ci">🌡️</div><div class="cl">Temperature</div>
       <div class="cv" style="color:${tC}">${temp}°C</div>
@@ -1261,6 +1275,8 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
         ['Check Interval','Every 5 minutes'],
         ['Machine ID', CFG.deviceId],
         ['Location', CFG.location],
+        ['IP Address', ip !== '—' ? ip : 'Not available'],
+        ['Registration', registered ? '✅ Registered' : '❌ Not registered'],
         ['Alert Email', CFG.email.to],
         ['Daily Report','09:30 AM KSA every day'],
         ['Monthly Report','09:00 AM KSA on 1st of each month'],
