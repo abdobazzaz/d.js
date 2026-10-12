@@ -213,12 +213,38 @@ async function fetchMachine() {
   ]);
   const d  = dr?.data?.devices?.[0] || {};
   const dd = detr?.data || {};
-  const temp   = parseInt(d.device_temp ?? dd.device_temp ?? -17);
-  const online = d.status==='0' || (d.connect_time||'').substring(0,4) >= '2025';
+
+  // Log raw status fields to help diagnose online detection
+  console.log(`📡 Device raw: status=${JSON.stringify(d.status)} connect_time=${d.connect_time} device_status=${d.device_status} online=${d.online}`);
+  console.log(`📡 Device IPs: device_ip=${d.device_ip} ip=${d.ip} dd.device_ip=${dd.device_ip} dd.ip=${dd.ip}`);
+  console.log(`📡 Registration: register_status=${d.register_status} is_register=${d.is_register} bind_status=${d.bind_status}`);
+
+  const temp = parseInt(d.device_temp ?? dd.device_temp ?? -17);
+
+  // Online detection: try multiple field patterns used by DW vending API
+  // status '1' or 1 = online, '0' or 0 = offline (Chinese IoT convention)
+  // Also check device_status, online flag, and recent connect_time as fallbacks
+  const statusVal = d.status ?? d.device_status ?? dd.status ?? dd.device_status;
+  const onlineByStatus = statusVal === 1 || statusVal === '1' || statusVal === 'online';
+  const onlineByFlag   = d.online === 1 || d.online === true || d.online === '1';
+  const onlineByTime   = (d.connect_time||'').substring(0,4) >= '2025';
+  const online = onlineByStatus || onlineByFlag || onlineByTime;
+
   const rawConn = d.connect_time || dd.connect_time || '';
   const ksaConn = rawConn ? toKSATime(rawConn) : '—';
   const ip = d.device_ip || d.ip || dd.device_ip || dd.ip || '—';
-  const registered = !!(d.register_status === 1 || d.is_register === 1 || dd.register_status === 1 || dd.is_register === 1 || d.bind_status === 1 || dd.bind_status === 1 || online);
+
+  // Registered: if machine is online it's definitely registered; also check explicit fields
+  const registered = online || !!(
+    d.register_status === 1 || d.register_status === '1' ||
+    d.is_register === 1 || d.is_register === '1' ||
+    dd.register_status === 1 || dd.register_status === '1' ||
+    dd.is_register === 1 || dd.is_register === '1' ||
+    d.bind_status === 1 || d.bind_status === '1' ||
+    dd.bind_status === 1 || dd.bind_status === '1'
+  );
+
+  console.log(`📡 Result: online=${online} (byStatus=${onlineByStatus} byFlag=${onlineByFlag} byTime=${onlineByTime}) registered=${registered} ip=${ip}`);
   return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
 }
 async function fetchStock() {
