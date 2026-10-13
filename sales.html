@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Sales</title>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Cairo',sans-serif;background:#F8F1E7;color:#1C2E08}
+.nav{background:#F8F1E7;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #F5A623;flex-wrap:wrap;gap:10px}
+.nav-l{display:flex;align-items:center;gap:12px}
+.brand-logo{height:52px;width:auto}
+.brand-title{color:#1B3F8B;font-size:14px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
+.back{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;padding:5px 12px;font-size:12px;font-weight:700;color:#1B3F8B;text-decoration:none}
+.wrap{max-width:960px;margin:18px auto;padding:0 16px}
+.panel{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.08);padding:14px;margin-bottom:16px}
+.ctl{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.ctl label{display:flex;flex-direction:column;font-size:10px;color:#7A9660;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;gap:3px}
+.ctl input[type=date]{font-family:inherit;font-size:14px;padding:7px 10px;border:1.5px solid #E8D5B7;border-radius:10px;background:#fff;color:#1C2E08}
+.btn{font-family:inherit;font-size:13px;font-weight:700;border:none;border-radius:10px;padding:9px 16px;cursor:pointer;background:#1B3F8B;color:#fff}
+.btn.alt{background:#5A9E1E}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+.chip{font-family:inherit;font-size:12px;font-weight:700;border:1.5px solid #E8D5B7;background:#F8F1E7;color:#1B3F8B;border-radius:16px;padding:4px 11px;cursor:pointer}
+.chip.on{background:#1B3F8B;color:#fff;border-color:#1B3F8B}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+.card{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;padding:14px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.cl{font-size:9px;color:#7A9660;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}
+.cv{font-size:22px;font-weight:900;line-height:1.1}
+.cs{font-size:10px;color:#7A9660;margin-top:3px}
+h2{font-size:13px;font-weight:900;color:#1B3F8B;margin-bottom:10px;letter-spacing:.5px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:left;font-size:10px;color:#7A9660;letter-spacing:1px;text-transform:uppercase;padding:6px 8px;border-bottom:2px solid #E8D5B7}
+td{padding:8px;border-bottom:1px solid #F0E4D0}
+td.n,th.n{text-align:right}
+.bar{height:8px;border-radius:4px;background:#F5A623;min-width:2px}
+.scroll{overflow-x:auto}
+.msg{padding:18px;text-align:center;color:#7A9660;font-size:13px}
+.err{color:#C8002A}
+#chart{width:100%;height:190px;display:block}
+.more{margin-top:10px;text-align:center}
+</style></head>
+<body>
+<div class="nav">
+  <div class="nav-l">
+    <img class="brand-logo" src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa">
+    <div class="brand-title">Sales Report</div>
+  </div>
+  <a class="back" href="/">← Monitor</a>
+</div>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="ctl">
+      <label>From<input type="date" id="from"></label>
+      <label>To<input type="date" id="to"></label>
+      <button class="btn" id="apply">Apply</button>
+      <button class="btn alt" id="xlsx">⬇ Excel</button>
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+
+  <div id="out"><div class="msg">Loading…</div></div>
+</div>
+
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var money = function(n){ return Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); };
+  var esc = function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); };
+
+  // KSA "today" using UTC arithmetic (UTC+3), independent of the viewer's timezone
+  function ksaToday(){ return new Date(Date.now()+3*3600000).toISOString().slice(0,10); }
+  function add(d,n){ var x=new Date(d+'T00:00:00Z'); x.setUTCDate(x.getUTCDate()+n); return x.toISOString().slice(0,10); }
+  function monthStart(d){ return d.slice(0,8)+'01'; }
+  function prevMonth(d){ var x=new Date(d.slice(0,8)+'01T00:00:00Z'); x.setUTCMonth(x.getUTCMonth()-1); var s=x.toISOString().slice(0,10); var e=add(monthStart(d),-1); return [s,e]; }
+
+  var presets = [
+    ['Today',        function(t){return [t,t];}],
+    ['Yesterday',    function(t){var y=add(t,-1);return [y,y];}],
+    ['Last 7 days',  function(t){return [add(t,-6),t];}],
+    ['Last 30 days', function(t){return [add(t,-29),t];}],
+    ['This month',   function(t){return [monthStart(t),t];}],
+    ['Last month',   function(t){return prevMonth(t);}]
+  ];
+
+  var chips = $('chips');
+  presets.forEach(function(p,i){
+    var b=document.createElement('button'); b.className='chip'; b.textContent=p[0]; b.dataset.i=i;
+    b.onclick=function(){ var r=p[1](ksaToday()); $('from').value=r[0]; $('to').value=r[1]; load(); };
+    chips.appendChild(b);
+  });
+
+  function markChip(){
+    var t=ksaToday(), f=$('from').value, to=$('to').value;
+    Array.prototype.forEach.call(chips.children,function(b,i){
+      var r=presets[i][1](t); b.className='chip'+(r[0]===f&&r[1]===to?' on':'');
+    });
+  }
+
+  function qs(){ return 'from='+encodeURIComponent($('from').value)+'&to='+encodeURIComponent($('to').value); }
+
+  var showAll=false, last=null;
+
+  function chart(daily){
+    var W=900,H=190,pl=8,pr=8,pt=14,pb=26, n=daily.length;
+    var max=Math.max.apply(null,daily.map(function(d){return d.revenue;}).concat([1]));
+    var bw=(W-pl-pr)/n, gap=Math.min(6,bw*.2), s='';
+    daily.forEach(function(d,i){
+      var h=(H-pt-pb)*(d.revenue/max), x=pl+i*bw+gap/2, y=H-pb-h;
+      s+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+Math.max(1,bw-gap).toFixed(1)+'" height="'+Math.max(0,h).toFixed(1)+'" rx="2" fill="#1B3F8B"><title>'+esc(d.date)+': '+money(d.revenue)+' SAR, '+d.orders+' orders</title></rect>';
+    });
+    var step=Math.max(1,Math.ceil(n/8));
+    daily.forEach(function(d,i){
+      if(i%step===0) s+='<text x="'+(pl+i*bw+bw/2).toFixed(1)+'" y="'+(H-8)+'" font-size="10" text-anchor="middle" fill="#7A9660">'+esc(d.date.slice(5))+'</text>';
+    });
+    s+='<text x="'+pl+'" y="10" font-size="10" fill="#7A9660">max '+money(max)+' SAR</text>';
+    return '<svg id="chart" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none">'+s+'</svg>';
+  }
+
+  function render(d){
+    last=d; var k=d.kpis, h='';
+    h+='<div class="grid">'+
+      card('Revenue',money(k.revenue)+' SAR','#5A9E1E',d.from+' → '+d.to)+
+      card('Orders',k.orders,'#1B3F8B',k.notCompleted?k.notCompleted+' not completed (excluded)':'completed orders')+
+      card('Avg order',money(k.avgOrder)+' SAR','#F5A623','per completed order')+
+      card('Avg per day',money(k.avgPerDay)+' SAR','#1B3F8B',d.daily.length+' day'+(d.daily.length===1?'':'s'))+
+      card('Best day',k.bestDay?money(k.bestDay.revenue)+' SAR':'—','#5A9E1E',k.bestDay?k.bestDay.date+' · '+k.bestDay.orders+' orders':'no sales')+
+      '</div>';
+
+    h+='<div class="panel"><h2>📈 Daily revenue</h2>'+chart(d.daily)+'</div>';
+
+    var maxS=Math.max.apply(null,d.bySku.map(function(x){return x.revenue;}).concat([1]));
+    h+='<div class="panel"><h2>🍽️ By product</h2><div class="scroll"><table><tr><th>Product</th><th class="n">Orders</th><th class="n">Revenue</th><th class="n">Share</th><th style="width:25%"></th></tr>';
+    d.bySku.forEach(function(x){
+      h+='<tr><td>'+esc(x.emoji)+' <b>'+esc(x.code)+'</b> · '+esc(x.name)+'</td><td class="n">'+x.orders+'</td><td class="n">'+money(x.revenue)+'</td><td class="n">'+x.share.toFixed(1)+'%</td><td><div class="bar" style="width:'+(x.revenue/maxS*100).toFixed(1)+'%"></div></td></tr>';
+    });
+    h+='</table></div></div>';
+
+    var list=showAll?d.orders:d.orders.slice(0,100);
+    h+='<div class="panel"><h2>🧾 Orders ('+d.orders.length+')</h2>';
+    if(!d.orders.length){ h+='<div class="msg">No completed orders in this range.</div>'; }
+    else{
+      h+='<div class="scroll"><table><tr><th>Time (KSA)</th><th>Product</th><th>Slot</th><th class="n">Amount</th></tr>';
+      list.forEach(function(o){ h+='<tr><td>'+esc(o.time)+'</td><td>'+esc(o.sku)+' · '+esc(o.product)+'</td><td>'+esc(o.slot)+'</td><td class="n">'+money(o.amount)+'</td></tr>'; });
+      h+='</table></div>';
+      if(d.orders.length>100&&!showAll) h+='<div class="more"><button class="btn" id="all">Show all '+d.orders.length+'</button></div>';
+    }
+    h+='</div>';
+    $('out').innerHTML=h;
+    var a=$('all'); if(a) a.onclick=function(){ showAll=true; render(last); };
+  }
+
+  function card(l,v,c,s){ return '<div class="card" style="border-top:3px solid '+c+'"><div class="cl">'+esc(l)+'</div><div class="cv" style="color:'+c+'">'+esc(v)+'</div><div class="cs">'+esc(s)+'</div></div>'; }
+
+  function load(){
+    showAll=false; markChip();
+    $('out').innerHTML='<div class="msg">Loading…</div>';
+    fetch('/api/sales?'+qs()).then(function(r){return r.json();}).then(function(d){
+      if(d.error) throw new Error(d.error);
+      $('from').value=d.from; $('to').value=d.to; markChip(); render(d);
+    }).catch(function(e){ $('out').innerHTML='<div class="msg err">Could not load sales: '+esc(e.message)+'</div>'; });
+  }
+
+  $('apply').onclick=load;
+  $('xlsx').onclick=function(){ window.location='/api/sales.xlsx?'+qs(); };
+  var t=ksaToday(); $('from').value=monthStart(t); $('to').value=t; load();
+})();
+</script>
+</body></html>

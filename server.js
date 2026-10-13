@@ -1272,6 +1272,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
   </div>
   <div class="nav-r">
+    <a class="nav-stat" href="/sales" style="text-decoration:none;color:#1B3F8B;font-weight:900">📊 Sales</a>
     <div class="nav-stat">🔄 Auto-refresh: 60s</div>
     <div class="nav-stat">⏱️ Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
   </div>
@@ -1574,6 +1575,105 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 });
 
 // Manual triggers
+// ── SALES PAGE: date-range report ─────────────────────────────────────────
+let ORDERS_CACHE = { t: 0, data: [] };
+async function getOrdersCached() {
+  if (Date.now() - ORDERS_CACHE.t < 60000 && ORDERS_CACHE.data.length) return ORDERS_CACHE.data;
+  if (!STATE.token) { const ok = await login(); if (!ok) throw new Error('Login failed'); }
+  ORDERS_CACHE = { t: Date.now(), data: await fetchAllOrders() };
+  return ORDERS_CACHE.data;
+}
+
+function parseSalesRange(q) {
+  const re = /^\d{4}-\d{2}-\d{2}$/;
+  const today = new Date(Date.now() + 3*3600000).toISOString().substring(0,10);
+  let from = re.test(q.from||'') ? q.from : today.substring(0,8) + '01';
+  let to   = re.test(q.to||'')   ? q.to   : today;
+  if (to < from) [from, to] = [to, from];
+  const addDays = (d, n) => { const x = new Date(d + 'T00:00:00Z'); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().substring(0,10); };
+  if (addDays(from, 366) < to) to = addDays(from, 366);
+  // KSA midnight = China 05:00 (same day)
+  return { from, to, start: `${from} 05:00:00`, end: `${addDays(to, 1)} 05:00:00`, addDays };
+}
+
+async function buildSales(q) {
+  const r = parseSalesRange(q);
+  const all = await getOrdersCached();
+  const inRange = all.filter(o => (o.pay_time || '') >= r.start && (o.pay_time || '') < r.end);
+  const done = inRange.filter(o => o.order_status == 5);
+
+  const days = {};
+  for (let d = r.from; d <= r.to; d = r.addDays(d, 1)) days[d] = { date: d, orders: 0, revenue: 0 };
+  const sku = {};
+  CFG.products.forEach(p => { sku[p.code] = { code: p.code, name: p.name, emoji: p.emoji, orders: 0, revenue: 0 }; });
+  sku.OTHER = { code: '—', name: 'Other / unmapped', emoji: '', orders: 0, revenue: 0 };
+
+  const rows = done.map(o => {
+    const g = o.goods?.[0] || {};
+    const prod = getProductCode(g.goods_name || '');
+    const apiS = String(g.cargoway_num || o.cargoway_num || '');
+    const amount = parseFloat(o.order_amount || 0);
+    const ksa = toKSATime(o.pay_time);              // 'YYYY-MM-DD HH:MM'
+    const day = ksa.substring(0, 10);
+    if (days[day]) { days[day].orders++; days[day].revenue += amount; }
+    const k = prod ? sku[prod.code] : sku.OTHER;
+    k.orders++; k.revenue += amount;
+    return { id: o.order_no || o.id || '', time: ksa, sku: prod?.code || '—', product: prod?.name || g.goods_name || '—', slot: CFG.slotMap[apiS] || apiS || '—', amount };
+  }).sort((a, b) => b.time.localeCompare(a.time));
+
+  const revenue = rows.reduce((s, x) => s + x.amount, 0);
+  const dayList = Object.values(days);
+  const best = dayList.reduce((m, d) => (d.revenue > (m?.revenue ?? -1) ? d : m), null);
+  const bySku = Object.values(sku).filter(x => x.orders > 0 || x.code !== '—')
+    .map(x => ({ ...x, share: revenue ? x.revenue / revenue * 100 : 0 }));
+
+  return {
+    from: r.from, to: r.to,
+    kpis: {
+      revenue, orders: rows.length,
+      avgOrder: rows.length ? revenue / rows.length : 0,
+      avgPerDay: dayList.length ? revenue / dayList.length : 0,
+      bestDay: best && best.revenue > 0 ? best : null,
+      notCompleted: inRange.length - done.length,
+    },
+    daily: dayList, bySku, orders: rows,
+  };
+}
+
+app.get('/api/sales', async (req, res) => {
+  try { res.json(await buildSales(req.query)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/sales.xlsx', async (req, res) => {
+  try {
+    const d = await buildSales(req.query);
+    const wb = new ExcelJS.Workbook();
+    const head = ws => { ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } }; ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1B3F8B' } }; };
+    const s1 = wb.addWorksheet('Summary');
+    s1.columns = [{ header: 'Metric', width: 28 }, { header: 'Value', width: 22 }];
+    [['From', d.from], ['To', d.to], ['Revenue (SAR)', +d.kpis.revenue.toFixed(2)], ['Orders', d.kpis.orders],
+     ['Average order (SAR)', +d.kpis.avgOrder.toFixed(2)], ['Average per day (SAR)', +d.kpis.avgPerDay.toFixed(2)],
+     ['Best day', d.kpis.bestDay ? `${d.kpis.bestDay.date} (${d.kpis.bestDay.revenue.toFixed(2)} SAR)` : '—'],
+     ['Not completed orders', d.kpis.notCompleted]].forEach(r => s1.addRow(r));
+    head(s1);
+    const s2 = wb.addWorksheet('Daily');
+    s2.columns = [{ header: 'Date', width: 14 }, { header: 'Orders', width: 10 }, { header: 'Revenue (SAR)', width: 16 }];
+    d.daily.forEach(x => s2.addRow([x.date, x.orders, +x.revenue.toFixed(2)])); head(s2);
+    const s3 = wb.addWorksheet('By SKU');
+    s3.columns = [{ header: 'SKU', width: 10 }, { header: 'Product', width: 36 }, { header: 'Orders', width: 10 }, { header: 'Revenue (SAR)', width: 16 }, { header: 'Share %', width: 10 }];
+    d.bySku.forEach(x => s3.addRow([x.code, x.name, x.orders, +x.revenue.toFixed(2), +x.share.toFixed(1)])); head(s3);
+    const s4 = wb.addWorksheet('Orders');
+    s4.columns = [{ header: 'Order', width: 26 }, { header: 'Time (KSA)', width: 18 }, { header: 'SKU', width: 10 }, { header: 'Product', width: 36 }, { header: 'Slot', width: 8 }, { header: 'Amount (SAR)', width: 14 }];
+    d.orders.forEach(x => s4.addRow([x.id, x.time, x.sku, x.product, x.slot, +x.amount.toFixed(2)])); head(s4);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="radwa-sales-${d.from}_to_${d.to}.xlsx"`);
+    await wb.xlsx.write(res); res.end();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/sales', (req, res) => res.sendFile(path.join(__dirname, 'sales.html')));
+
 // Diagnostic: shows status-like fields (names + values) the platform returns for this device.
 app.get('/debug-device', async (req, res) => {
   try {
