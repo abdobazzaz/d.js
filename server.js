@@ -231,7 +231,11 @@ async function fetchMachine() {
   const onlineByFlag   = d.online === 1 || d.online === true || d.online === '1';
   // NOTE: the old "connect_time year >= 2025" fallback was always true, so the
   // machine could never show OFFLINE. Removed. Freshness is checked below instead.
-  const platformOnline = onlineByStatus || onlineByFlag;
+  // The merchant UI has a separate "Online status" column, so also accept other online-style fields.
+  const ONLINE_KEYS = ['online_status','is_online','onlineStatus','online_state','net_status','network_status','mqtt_status','device_online'];
+  const truthy = v => v === 1 || v === true || v === '1' || v === 'online' || v === 'Online';
+  const onlineByOther = [d, dd].some(src => ONLINE_KEYS.some(k => truthy(src[k])));
+  const platformOnline = onlineByStatus || onlineByFlag || onlineByOther;
 
   // Staleness check: the platform can keep reporting status=online from its last
   // known value even when the machine has lost its identity/connection.
@@ -1563,6 +1567,20 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 });
 
 // Manual triggers
+// Diagnostic: shows status-like fields (names + values) the platform returns for this device.
+app.get('/debug-device', async (req, res) => {
+  try {
+    if (!STATE.token) await login();
+    const [dr, detr] = await Promise.all([
+      apiFetch('/api/v1/devices').catch(e => ({ error: e.message })),
+      apiFetch(`/api/v1/device/detail?device_id=${CFG.deviceId}`).catch(e => ({ error: e.message })),
+    ]);
+    const d = dr?.data?.devices?.[0] || {};
+    const dd = detr?.data || {};
+    const pick = o => Object.fromEntries(Object.entries(o).filter(([k]) => /status|online|state|conn|regist|bind|heart|time|net|mqtt|fault|active|temp/i.test(k)));
+    res.json({ listKeys: Object.keys(d), list: pick(d), detailKeys: Object.keys(dd), detail: pick(dd), listError: dr?.error, detailError: detr?.error });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 app.get('/check',        async(req,res) => { await doCheck(); res.json({ok:true,machine:STATE.machine,stats:STATE.stats}); });
 app.get('/daily',        async(req,res) => { await sendDailyReport(nowKSA()); res.json({ok:true}); });
 app.get('/monthly',      async(req,res) => { await sendMonthlyReport(); res.json({ok:true}); });
