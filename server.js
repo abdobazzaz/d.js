@@ -250,6 +250,9 @@ async function fetchMachine() {
   const staleMins = heartbeat ? Math.round((Date.now() - heartbeat.getTime()) / 60000) : null;
   const stale = staleMins !== null && staleMins > CFG.staleMinutes;
   const online = platformOnline && !stale;
+  // Power: the platform has no true power flag, so treat the machine as powered
+  // when the device record still returns a live telemetry reading (temperature).
+  const powered = (d.device_temp ?? dd.device_temp) !== undefined && (d.device_temp ?? dd.device_temp) !== null && (d.device_temp ?? dd.device_temp) !== '';
   if (stale) console.log(`⚠️ STALE: platform says online but last heartbeat (${heartbeatSource}) was ${staleMins} min ago`);
 
   const rawConn = d.connect_time || dd.connect_time || '';
@@ -267,7 +270,7 @@ async function fetchMachine() {
   );
 
   console.log(`📡 Result: online=${online} (byStatus=${onlineByStatus} byFlag=${onlineByFlag} stale=${stale} hb=${heartbeatSource}/${staleMins}min) registered=${registered} ip=${ip}`);
-  return { temp, online, platformOnline, stale, staleMins, heartbeatSource, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
+  return { temp, online, powered, platformOnline, stale, staleMins, heartbeatSource, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
 }
 async function fetchStock() {
   const d = await apiFetch(`/api/v1//devices/${CFG.deviceId}/cargoways`);
@@ -1192,8 +1195,8 @@ async function doCheck() {
 // ── WEB DASHBOARD ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   const up = process.uptime();
-  const { temp, online, lastConn, ip, registered, stale, staleMins, heartbeatSource } = STATE.machine;
-  const pC = online ? '#5A9E1E' : '#C8002A';
+  const { temp, online, powered, lastConn, ip, registered, stale, staleMins, heartbeatSource } = STATE.machine;
+  const pC = powered ? '#5A9E1E' : '#C8002A';
   const hbNote = stale ? `⚠️ STALE: no heartbeat for ${staleMins} min`
                : (heartbeatSource && heartbeatSource !== 'none' ? `Heartbeat ${staleMins} min ago` : 'Heartbeat: not provided by API');
   const tC = temp >= CFG.tempAlert ? '#C8002A' : '#1B3F8B';
@@ -1243,22 +1246,23 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
 </div>
 <div class="wrap">
    <div class="grid">
-    <!-- 1. Machine Power -->
+    <!-- 1. Power Status -->
     <div class="card" style="border-top:3px solid ${pC}">
-      <div class="ci">${online?'🟢':'🔴'}</div><div class="cl">Machine Power</div>
-      <div class="cv" style="color:${pC}">${online?'ONLINE':'OFFLINE'}</div>
-      <div class="cs">Last: ${lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
-      <div class="cs" style="color:${stale?'#C8002A':'#7A9660'}">${hbNote}</div>
+      <div class="ci">${powered?'🟢':'🔴'}</div><div class="cl">Power Status</div>
+      <div class="cv" style="color:${pC}">${powered?'POWERED ON':'POWERED OFF'}</div>
+      <div class="cs">${powered ? 'Telemetry received' : 'No telemetry received'}</div>
     </div>
 
-    <!-- 2. IP / Registration -->
+    <!-- 2. Connection / Registration -->
     ${(() => {
-      const rC = registered ? '#5A9E1E' : '#C8002A';
+      const cC = online ? '#5A9E1E' : '#C8002A';
       const ipDisplay = ip !== '—' ? ip : 'No IP';
-      return `<div class="card" style="border-top:3px solid ${rC}">
-      <div class="ci">🌐</div><div class="cl">Connection / IP</div>
-      <div class="cv" style="color:${rC};font-size:14px">${registered?'✅ Registered':'❌ Not Registered'}</div>
-      <div class="cs">IP: ${ipDisplay}</div>
+      const lastTxt = lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—';
+      return `<div class="card" style="border-top:3px solid ${cC}">
+      <div class="ci">🌐</div><div class="cl">Connection / Registration</div>
+      <div class="cv" style="color:${cC};font-size:14px">${online?'✅ Connected':'❌ Not Connected'} · ${registered?'Registered':'Not Registered'}</div>
+      <div class="cs">IP: ${ipDisplay} · Last: ${lastTxt}</div>
+      <div class="cs" style="color:${stale?'#C8002A':'#7A9660'}">${hbNote}</div>
     </div>`;
     })()}
 
