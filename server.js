@@ -1846,6 +1846,36 @@ app.get('/debug-refill', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Diagnostic (GET only): probe slot/cargoway read endpoints. Paths must start /api/v1/ and contain "cargoway".
+app.get('/debug-cargo', async (req, res) => {
+  try {
+    if (!STATE.token && !STATE.cookie) await login();
+    const id = CFG.deviceId;
+    const given = typeof req.query.path === 'string' ? req.query.path : '';
+    if (given && (!given.startsWith('/api/v1/') || given.includes('..') || !/cargoway/i.test(given))) {
+      return res.status(400).json({ error: 'path must start with /api/v1/ and contain "cargoway"' });
+    }
+    const candidates = given ? [given] : [
+      `/api/v1/device/cargoways?device_id=${id}`, `/api/v1/cargoways?device_id=${id}`,
+      `/api/v1/devices/${id}/cargoways`, `/api/v1/device/cargoway_stock?device_id=${id}`,
+      `/api/v1/cargoway_stock?device_id=${id}`, `/api/v1/device/cargoways`, `/api/v1/cargoways`,
+      `/api/v1/device/cargoway_stock`, `/api/v1/cargoway_stock`,
+    ];
+    const tried = [];
+    for (const path of candidates) {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (STATE.token)  headers['Authorization'] = `Bearer ${STATE.token}`;
+        if (STATE.cookie) headers['Cookie'] = STATE.cookie;
+        const r = await fetch(CFG.api + path, { headers, timeout: 20000 });
+        const text = await r.text();
+        tried.push({ path, status: r.status, bytes: text.length, preview: text.substring(0, 1800) });
+      } catch (e) { tried.push({ path, error: e.message }); }
+    }
+    res.json({ tried });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Diagnostic: shows status-like fields (names + values) the platform returns for this device.
 app.get('/debug-device', async (req, res) => {
   try {
