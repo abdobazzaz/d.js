@@ -12,6 +12,40 @@ const path       = require('path');
 const app = express();
 app.use(express.json());
 
+// ── ACCESS CONTROL: Monitor page is public; Sales, Refill, their APIs and debug routes need the PIN ──
+const crypto = require('crypto');
+const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/api\/(sales|refills|slots|replenish)/, /^\/debug-/];
+const accessToken = () => process.env.REFILL_PIN ? crypto.createHmac('sha256', process.env.REFILL_PIN).update('radwa-access-v1').digest('hex') : null;
+function isAuthed(req) {
+  const t = accessToken(); if (!t) return false;
+  const c = (req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith('rv='));
+  const v = c ? c.slice(3) : '';
+  return v.length === t.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(t));
+}
+app.use((req, res, next) => {
+  if (!LOCKED.some(r => r.test(req.path)) || isAuthed(req)) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Locked: open /unlock and enter the PIN' });
+  res.redirect('/unlock?next=' + encodeURIComponent(req.path));
+});
+const FAILS = new Map();
+app.post('/api/unlock', (req, res) => {
+  const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+  const f = FAILS.get(ip) || { n: 0, t: Date.now() };
+  if (Date.now() - f.t > 15 * 60000) { f.n = 0; f.t = Date.now(); }
+  if (f.n >= 5) return res.status(429).json({ error: 'Too many attempts, try again in 15 minutes' });
+  const pin = process.env.REFILL_PIN;
+  if (!pin) return res.status(403).json({ error: 'No PIN is set on the server (REFILL_PIN)' });
+  const h = x => crypto.createHash('sha256').update(String(x || '')).digest();
+  if (!crypto.timingSafeEqual(h(req.body?.pin), h(pin))) { f.n++; FAILS.set(ip, f); return res.status(401).json({ error: 'Wrong PIN' }); }
+  FAILS.delete(ip);
+  const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  res.setHeader('Set-Cookie', `rv=${accessToken()}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
+  res.json({ ok: true });
+});
+app.get('/lock', (req, res) => { res.setHeader('Set-Cookie', 'rv=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); res.redirect('/'); });
+app.get('/unlock', (req, res) => res.sendFile(path.join(__dirname, 'unlock.html')));
+
+
 // ── CONFIGURATION ─────────────────────────────────────────────────────────
 const CFG = {
   // Machine
@@ -1810,7 +1844,7 @@ app.get('/api/refills.xlsx', async (req, res) => {
 });
 
 // ── MACHINE REFILL (writes stock counts to the vending cloud) ─────────────
-// Writes need REFILL_PIN set as an environment variable on Render; without it they are disabled.
+// Protected by the access PIN (REFILL_PIN) through the guard above.
 async function getSlots() {
   if (!STATE.token && !STATE.cookie) { const ok = await login(); if (!ok) throw new Error('Login failed'); }
   let r = await apiFetch(`/api/v1/device/cargoways?device_id=${CFG.deviceId}`);
@@ -1821,11 +1855,12 @@ async function getSlots() {
     for (const c of list || []) {
       if (String(c.is_delete) === '1') continue;
       const name = c.goods?.goods_name || '';
-      const prod = getProductCode(name);
+      const rowN = parseInt(c.row_num, 10) || +row;
+      const prod = getProductCode(name) || CFG.products.find(p => (p.rows || []).includes(rowN)) || null;
       const vol = parseInt(c.cargoway_vol, 10) || 0, amount = parseInt(c.goods_amount, 10) || 0;
       out.push({
         id: String(c.cargoway_id), num: String(c.cargoway_num), row: parseInt(c.row_num, 10) || +row, col: parseInt(c.col_num, 10) || 0,
-        label: `${c.row_num}-${c.col_num}`, name, sku: prod?.code || '', img: c.goods?.goods_img || '',
+        label: `${c.row_num}-${c.col_num}`, name: prod?.name || name, apiName: name, sku: prod?.code || '', img: c.goods?.goods_img || '',
         vol, amount, free: Math.max(0, vol - amount),
         merged: String(c.merge_type) !== '0' || String(c.merge_cargoway_id) !== '0',
         disabled: String(c.cargoway_status) !== '0',
@@ -1836,19 +1871,13 @@ async function getSlots() {
 }
 
 app.get('/api/slots', async (req, res) => {
-  try { res.json({ slots: await getSlots(), writeEnabled: !!process.env.REFILL_PIN }); }
+  try { res.json({ slots: await getSlots(), writeEnabled: true }); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 const REFILL_DONE = new Map();   // request token -> result (stops double submits)
 let REFILL_BUSY = false;
 app.post('/api/replenish', async (req, res) => {
-  const pin = process.env.REFILL_PIN;
-  if (!pin) return res.status(403).json({ error: 'Refill is disabled: set REFILL_PIN in the Render environment first.' });
-  const given = String(req.body?.pin || '');
-  const crypto = require('crypto');
-  const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(pin).digest();
-  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'Wrong PIN' });
   const token = String(req.body?.token || '');
   if (token && REFILL_DONE.has(token)) return res.json({ ...REFILL_DONE.get(token), duplicate: true });
   if (REFILL_BUSY) return res.status(409).json({ error: 'Another refill is in progress' });

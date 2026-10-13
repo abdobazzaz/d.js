@@ -6,21 +6,34 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 <style>
-.sg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-bottom:10px}
-.sl{border:1px solid #e7e5e4;border-radius:12px;padding:10px;background:#fafaf9;display:flex;flex-direction:column;gap:6px}
-.sl.chg{border-color:#84BD00;background:#f4fae6}
-.sl .h{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:#1c1917}
-.sl .p{font-size:11px;color:#57534e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sl .q{font-size:12px;color:#57534e}.sl .q b{font-size:16px;color:#1c1917}
-.st{display:flex;gap:4px}
-.st button{width:32px;height:32px;border:1px solid #d6d3d1;background:#fff;border-radius:8px;font-size:16px;font-weight:700;cursor:pointer}
-.st input{width:100%;min-width:0;height:32px;text-align:center;border:1px solid #d6d3d1;border-radius:8px;font-family:inherit;font-weight:700}
-.sl .f{font-family:inherit;font-size:11px;font-weight:700;border:1px solid #84BD00;background:#fff;color:#4d7000;border-radius:8px;padding:4px;cursor:pointer}
-.bar2{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-top:10px;border-top:1px solid #f1f5f9}
-.bar2 input{height:44px;border:1.5px solid #e7e5e4;border-radius:11px;padding:0 12px;font-family:inherit;width:130px}
-.note{font-size:12px;padding:8px 12px;border-radius:8px;margin-top:10px}
+.rowb{margin-bottom:14px}
+.rowh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.rowh .rn{background:#173404;color:#84BD00;font-weight:800;font-size:12px;border-radius:8px;padding:4px 9px;white-space:nowrap}
+.rowh .mn{font-size:14px;font-weight:700;color:#1c1917;flex:1;min-width:140px}
+.rowh .mn small{display:block;font-size:11px;font-weight:500;color:#78716c}
+.rowh .rt{font-size:12px;color:#57534e;font-weight:600;white-space:nowrap}
+.rowh .f{font-family:inherit;font-size:12px;font-weight:700;border:1px solid #84BD00;background:#fff;color:#4d7000;border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
+.sg{display:grid;gap:6px}
+.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:8px 6px;background:#fafaf9;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.sl.chg{border-color:#84BD00;background:#f1f9dc}
+.sl .lb{font-size:11px;font-weight:700;color:#57534e}
+.sl .qq{font-size:20px;font-weight:800;color:#1c1917;line-height:1;font-variant-numeric:tabular-nums}
+.sl .qq i{font-style:normal;font-size:12px;font-weight:600;color:#78716c}
+.sl .dd{font-size:11px;font-weight:700;height:14px;color:#4d7000}
+.sl .dd.n{color:#be123c}
+.sl .bt{display:flex;gap:4px;width:100%}
+.sl .bt button{flex:1;height:42px;min-width:0;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;touch-action:manipulation}
+.sl .bt button:active{background:#e8f3cc}
+.bar2{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 2px;margin-top:6px;background:#fff;border-top:1px solid #f1f5f9}
+.bar2 .sm{font-size:13px;font-weight:700;flex:1;min-width:120px}
+.bar2 .btn{height:44px}
+.note{font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px}
 .note.ok{background:#ecfdf5;color:#047857}.note.bad{background:#fff1f2;color:#be123c}
-@media(max-width:640px){.sg{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){
+  .card{padding:14px}
+  .bar2 .btn{flex:1}
+  .bar2 .sm{flex-basis:100%}
+}
 </style>
 </head>
 <body>
@@ -98,8 +111,10 @@
 
 (function(){
   var U = RUI, esc = U.esc, box = document.getElementById('fill');
-  var slots = [], draft = {}, writeOn = false, busy = false, msg = '';
+  var slots = [], draft = {}, busy = false, msg = '';
   function tok(){ return 'r' + Date.now() + Math.random().toString(36).slice(2); }
+  function get(id){ return slots.filter(function(s){return s.id===id;})[0]; }
+  function clamp(s, v){ return Math.max(-s.amount, Math.min(s.free, v)); }
   function total(){ var n=0,u=0; Object.keys(draft).forEach(function(k){ if(draft[k]){n++;u+=draft[k];} }); return [n,u]; }
   function draw(){
     var rows = {}; slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); });
@@ -107,50 +122,43 @@
     var h = '<div class="card"><div class="sec-h"><div class="sec-n">+</div><span class="sec-t">Refill machine</span><span class="badge">'+cur+' / '+cap+' units in machine</span></div>';
     if (!slots.length) h += '<div class="msg">Loading slots…</div>';
     Object.keys(rows).forEach(function(r){
-      h += '<div class="sg">' + rows[r].map(function(s){
-        var d = draft[s.id] || 0;
-        return '<div class="sl'+(d?' chg':'')+'"><div class="h"><span>'+esc(s.label)+'</span><span>'+esc(s.sku)+'</span></div><div class="p">'+esc(s.name)+'</div>'+
-          '<div class="q"><b>'+s.amount+'</b> / '+s.vol+(d?' → <b>'+(s.amount+d)+'</b>':'')+'</div>'+
-          '<div class="st"><button data-a="m" data-id="'+s.id+'">−</button><input type="number" value="'+d+'" data-id="'+s.id+'" step="1"><button data-a="p" data-id="'+s.id+'">+</button></div>'+
-          '<button class="f" data-a="f" data-id="'+s.id+'">Fill (+'+s.free+')</button></div>';
-      }).join('') + '</div>';
+      var list = rows[r], f = list[0], rc=0, rv=0, rf=0;
+      list.forEach(function(s){ rc+=s.vol; rv+=s.amount; rf+=s.free; });
+      h += '<div class="rowb"><div class="rowh"><span class="rn">Row '+esc(r)+'</span><div class="mn">'+esc(f.name)+'<small>'+esc(f.sku)+' · Frozen Ready Meal</small></div><span class="rt">'+rv+' / '+rc+'</span>'+
+        '<button class="f" data-a="row" data-r="'+esc(r)+'"'+(rf?'':' disabled')+'>Fill row (+'+rf+')</button></div>'+
+        '<div class="sg" style="grid-template-columns:repeat('+Math.min(list.length,6)+',minmax(0,1fr))">' + list.map(function(s){
+          var d = draft[s.id] || 0;
+          return '<div class="sl'+(d?' chg':'')+'"><div class="lb">'+esc(s.label)+'</div><div class="qq">'+(s.amount+d)+'<i>/'+s.vol+'</i></div>'+
+            '<div class="dd'+(d<0?' n':'')+'">'+(d?(d>0?'+':'')+d:'')+'</div>'+
+            '<div class="bt"><button data-a="m" data-id="'+s.id+'" aria-label="minus">−</button><button data-a="p" data-id="'+s.id+'" aria-label="plus">+</button></div></div>';
+        }).join('') + '</div></div>';
     });
     var t = total();
-    h += '<div class="bar2"><span style="font-size:13px;font-weight:600;flex:1">'+(t[0]?t[0]+' slot'+(t[0]>1?'s':'')+' · '+(t[1]>0?'+':'')+t[1]+' units':'No changes yet')+'</span>'+
-      '<button class="btn" data-a="all">Fill all to capacity</button><button class="btn" data-a="clr">Clear</button>'+
-      '<input type="password" id="pin" placeholder="Refill PIN" value="'+esc(sessionStorage.getItem('rpin')||'')+'">'+
+    h += '<div class="bar2"><span class="sm">'+(t[0]?t[0]+' slot'+(t[0]>1?'s':'')+' · '+(t[1]>0?'+':'')+t[1]+' units':'Tap + on a slot to add stock')+'</span>'+
+      '<button class="btn" data-a="all">Fill all</button><button class="btn" data-a="clr"'+(t[0]?'':' disabled')+'>Clear</button>'+
       '<button class="btn green" data-a="go"'+(t[0]&&!busy?'':' disabled')+'>'+(busy?'Sending…':'Apply refill')+'</button></div>';
-    if (!writeOn && slots.length) h += '<div class="note bad">Saving is switched off until a REFILL_PIN is set on the server.</div>';
     if (msg) h += msg;
     box.innerHTML = h + '</div>';
   }
-  function clamp(s, v){ v = Math.round(+v) || 0; return Math.max(-s.amount, Math.min(s.free, v)); }
-  function get(id){ return slots.filter(function(s){return s.id===id;})[0]; }
-  box.addEventListener('change', function(e){
-    var i = e.target; if (i.tagName !== 'INPUT' || !i.dataset.id) return;
-    draft[i.dataset.id] = clamp(get(i.dataset.id), i.value); draw();
-  });
   box.addEventListener('click', function(e){
-    var b = e.target; if (!b.dataset.a) return; var a = b.dataset.a, s = b.dataset.id && get(b.dataset.id);
+    var b = e.target.closest('button'); if (!b || !b.dataset.a || b.disabled) return;
+    var a = b.dataset.a, s = b.dataset.id && get(b.dataset.id);
     if (a==='m') draft[s.id] = clamp(s, (draft[s.id]||0)-1);
     else if (a==='p') draft[s.id] = clamp(s, (draft[s.id]||0)+1);
-    else if (a==='f') draft[s.id] = s.free;
+    else if (a==='row') slots.forEach(function(x){ if (String(x.row)===b.dataset.r) draft[x.id] = x.free; });
     else if (a==='all') slots.forEach(function(x){ draft[x.id] = x.free; });
     else if (a==='clr') { draft = {}; msg = ''; }
     else if (a==='go') return apply();
-    draw();
+    msg = ''; draw();
   });
   function apply(){
-    var pinEl = document.getElementById('pin'), pin = pinEl ? pinEl.value : '';
     var list = slots.filter(function(s){ return draft[s.id]; });
     if (!list.length || busy) return;
-    if (!pin) { msg = '<div class="note bad">Enter the refill PIN.</div>'; return draw(); }
     var txt = list.map(function(s){ return s.label+': '+s.amount+' → '+(s.amount+draft[s.id])+' ('+(draft[s.id]>0?'+':'')+draft[s.id]+')'; }).join('\n');
     if (!confirm('Send this to the vending cloud?\n\n'+txt)) return;
-    sessionStorage.setItem('rpin', pin);
     busy = true; msg = ''; draw();
     fetch('/api/replenish', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ pin: pin, token: tok(), changes: list.map(function(s){ return { id: s.id, delta: draft[s.id] }; }) }) })
+      body: JSON.stringify({ token: tok(), changes: list.map(function(s){ return { id: s.id, delta: draft[s.id] }; }) }) })
     .then(function(r){ return r.json(); }).then(function(d){
       if (d.error) { msg = '<div class="note bad">'+esc(d.error)+'</div>'; }
       else {
@@ -164,7 +172,7 @@
   function load(){
     U.getJSON('/api/slots').then(function(d){
       if (d.error) throw new Error(d.error);
-      slots = d.slots; writeOn = d.writeEnabled; draw();
+      slots = d.slots; draw();
     }).catch(function(e){ box.innerHTML = '<div class="card"><div class="msg err">Could not load slots: '+esc(e.message)+'</div></div>'; });
   }
   draw(); load();

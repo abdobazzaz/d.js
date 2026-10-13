@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Unlock</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
+<style>
+.box{max-width:380px;margin:12vh auto 0;padding:0 16px}
+.box .card{display:flex;flex-direction:column;gap:14px;text-align:center}
+.box img{height:56px;margin:0 auto}
+.box input{height:48px;border:1.5px solid #e7e5e4;border-radius:11px;padding:0 14px;font-family:inherit;font-size:16px;text-align:center}
+.box input:focus{outline:none;border-color:#84BD00}
+.err{color:#be123c;font-size:13px;min-height:18px}
+</style></head>
+<body>
+<div class="box"><div class="card">
+  <img src="/logo.png" alt="Radwa">
+  <div class="title">Sales &amp; Refill are locked</div>
+  <div class="sub">The Monitor page stays open to everyone. Enter the PIN to see Sales and Refill.</div>
+  <input id="pin" type="password" inputmode="text" autocomplete="current-password" placeholder="PIN" autofocus>
+  <div class="err" id="err"></div>
+  <button class="btn green" id="go">Unlock</button>
+  <a href="/" class="sub">← Back to Monitor</a>
+</div></div>
+<script>
+(function(){
+  var q = new URLSearchParams(location.search).get('next') || '/sales';
+  if (q.charAt(0) !== '/' || q.charAt(1) === '/') q = '/sales';
+  var pin = document.getElementById('pin'), err = document.getElementById('err'), go = document.getElementById('go');
+  function submit(){
+    err.textContent = ''; go.disabled = true;
+    fetch('/api/unlock', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pin: pin.value }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if (d.ok) location.href = q; else { err.textContent = d.error || 'Failed'; go.disabled = false; pin.select(); } })
+      .catch(function(e){ err.textContent = e.message; go.disabled = false; });
+  }
+  go.onclick = submit;
+  pin.addEventListener('keydown', function(e){ if (e.key === 'Enter') submit(); });
+})();
+</script>
+</body></html>
