@@ -68,6 +68,7 @@ let STATE = {
   token:          '',
   cookie:         '',
   lastPower:      null,
+  lastRegistered: null, // registration state for alert transitions
   lastTempAlert:  false,
   lastDoneCount:  0,
   lastSkuAlerts:  {}, // track per-SKU alerts
@@ -359,7 +360,7 @@ async function sendEmail(subject, htmlBody, attachments = []) {
 
 // ── EMAIL TEMPLATES ───────────────────────────────────────────────────────
 function alertEmail(icon, title, bodyLines) {
-  const isRed    = title.includes('OFFLINE') || title.includes('Alert') || title.includes('Empty');
+  const isRed    = title.includes('OFFLINE') || title.includes('NOT REGISTERED') || title.includes('Alert') || title.includes('Empty');
   const isOrange = title.includes('Temperature') || title.includes('Low');
   const color    = isRed ? '#C8002A' : isOrange ? '#C06000' : '#1B3F8B';
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
@@ -997,7 +998,7 @@ async function doCheck() {
     STATE.machine = machine;
     STATE.stock   = stock;
 
-    const { temp, online, lastConn } = machine;
+    const { temp, online, lastConn, registered } = machine;
     const now = nowKSA();
     const today = now.toISOString().substring(0,10);
     const mon   = now.toISOString().substring(0,7);
@@ -1052,6 +1053,27 @@ async function doCheck() {
       ]));
     }
     STATE.lastPower = online;
+
+    // ── REGISTRATION ALERTS ──
+    // Not registered: alert on the first check too (startup) and on any registered -> not registered change.
+    if (!registered && STATE.lastRegistered !== false) {
+      await sendEmail('⚠️ Machine is NOT REGISTERED!', alertEmail('⚠️','Machine is NOT REGISTERED!',[
+        'Your Radwa vending machine is <strong>not registered / not connected</strong> on the DW Vending platform.',
+        `Machine ID: <strong>${CFG.deviceId}</strong>`,
+        `Location: <strong>${CFG.location}</strong>`,
+        `Last connection: <strong>${lastConn}</strong>`,
+        'The machine may be powered but unable to identify itself, so it cannot sell. Try a full power-cycle, check the SIM/4G module, then contact DW Vending support.',
+      ]));
+    }
+    // Registered again: only after a confirmed not-registered state.
+    if (registered && STATE.lastRegistered === false) {
+      await sendEmail('✅ Machine is REGISTERED again', alertEmail('✅','Machine is REGISTERED again',[
+        'Your Radwa vending machine is registered and connected again.',
+        `Machine ID: <strong>${CFG.deviceId}</strong>`,
+        `Connected at: <strong>${lastConn}</strong>`,
+      ]));
+    }
+    STATE.lastRegistered = registered;
 
     // ── TEMP ALERT ──
     if (temp >= CFG.tempAlert && !STATE.lastTempAlert) {
