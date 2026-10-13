@@ -30,6 +30,7 @@ const CFG = {
   slotCap:    2,     // capacity per slot
   stockOkMin: 3,     // OK if >= 3 units per SKU
   checkEvery: 5 * 60 * 1000, // 5 minutes
+  staleMinutes: 30,          // no heartbeat for this long => treat machine as OFFLINE
 
   // Email
   email: {
@@ -227,8 +228,29 @@ async function fetchMachine() {
   const statusVal = d.status ?? d.device_status ?? dd.status ?? dd.device_status;
   const onlineByStatus = statusVal === 1 || statusVal === '1' || statusVal === 'online';
   const onlineByFlag   = d.online === 1 || d.online === true || d.online === '1';
-  const onlineByTime   = (d.connect_time||'').substring(0,4) >= '2025';
-  const online = onlineByStatus || onlineByFlag || onlineByTime;
+  // NOTE: the old "connect_time year >= 2025" fallback was always true, so the
+  // machine could never show OFFLINE. Removed. Freshness is checked below instead.
+  const platformOnline = onlineByStatus || onlineByFlag;
+
+  // Staleness check: the platform can keep reporting status=online from its last
+  // known value even when the machine has lost its identity/connection.
+  // Use the newest heartbeat-style timestamp the API gives us (China time, GMT+8).
+  console.log(`📡 Device keys: ${Object.keys(d).join(',')} | detail keys: ${Object.keys(dd).join(',')}`);
+  const HB_FIELDS = ['last_heartbeat','heartbeat_time','last_online_time','last_report_time','report_time','update_time','updated_at'];
+  let heartbeat = null, heartbeatSource = 'none';
+  for (const src of [d, dd]) {
+    for (const f of HB_FIELDS) {
+      if (!src[f]) continue;
+      const t = typeof src[f] === 'number'
+        ? new Date(src[f] < 1e12 ? src[f]*1000 : src[f])
+        : new Date(String(src[f]).replace(' ', 'T') + '+08:00');
+      if (!isNaN(t) && (!heartbeat || t > heartbeat)) { heartbeat = t; heartbeatSource = f; }
+    }
+  }
+  const staleMins = heartbeat ? Math.round((Date.now() - heartbeat.getTime()) / 60000) : null;
+  const stale = staleMins !== null && staleMins > CFG.staleMinutes;
+  const online = platformOnline && !stale;
+  if (stale) console.log(`⚠️ STALE: platform says online but last heartbeat (${heartbeatSource}) was ${staleMins} min ago`);
 
   const rawConn = d.connect_time || dd.connect_time || '';
   const ksaConn = rawConn ? toKSATime(rawConn) : '—';
@@ -244,8 +266,8 @@ async function fetchMachine() {
     dd.bind_status === 1 || dd.bind_status === '1'
   );
 
-  console.log(`📡 Result: online=${online} (byStatus=${onlineByStatus} byFlag=${onlineByFlag} byTime=${onlineByTime}) registered=${registered} ip=${ip}`);
-  return { temp, online, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
+  console.log(`📡 Result: online=${online} (byStatus=${onlineByStatus} byFlag=${onlineByFlag} stale=${stale} hb=${heartbeatSource}/${staleMins}min) registered=${registered} ip=${ip}`);
+  return { temp, online, platformOnline, stale, staleMins, heartbeatSource, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
 }
 async function fetchStock() {
   const d = await apiFetch(`/api/v1//devices/${CFG.deviceId}/cargoways`);
@@ -1014,6 +1036,7 @@ async function doCheck() {
         `Machine ID: <strong>${CFG.deviceId}</strong>`,
         `Location: <strong>${CFG.location}</strong>`,
         `Last seen: <strong>${lastConn}</strong>`,
+        machine.stale ? `Reason: the platform still says online, but no heartbeat for <strong>${machine.staleMins} min</strong> (data is stale). The machine may have lost its registration or connection.` : 'Reason: the platform reports the machine as offline.',
         'Please check the machine immediately.',
       ]));
     }
@@ -1169,8 +1192,10 @@ async function doCheck() {
 // ── WEB DASHBOARD ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   const up = process.uptime();
-  const { temp, online, lastConn, ip, registered } = STATE.machine;
+  const { temp, online, lastConn, ip, registered, stale, staleMins, heartbeatSource } = STATE.machine;
   const pC = online ? '#5A9E1E' : '#C8002A';
+  const hbNote = stale ? `⚠️ STALE: no heartbeat for ${staleMins} min`
+               : (heartbeatSource && heartbeatSource !== 'none' ? `Heartbeat ${staleMins} min ago` : 'Heartbeat: not provided by API');
   const tC = temp >= CFG.tempAlert ? '#C8002A' : '#1B3F8B';
 
   res.send(`<!DOCTYPE html>
@@ -1223,6 +1248,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       <div class="ci">${online?'🟢':'🔴'}</div><div class="cl">Machine Power</div>
       <div class="cv" style="color:${pC}">${online?'ONLINE':'OFFLINE'}</div>
       <div class="cs">Last: ${lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
+      <div class="cs" style="color:${stale?'#C8002A':'#7A9660'}">${hbNote}</div>
     </div>
 
     <!-- 2. IP / Registration -->
