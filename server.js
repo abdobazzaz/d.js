@@ -1809,6 +1809,88 @@ app.get('/api/refills.xlsx', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ── MACHINE REFILL (writes stock counts to the vending cloud) ─────────────
+// Writes need REFILL_PIN set as an environment variable on Render; without it they are disabled.
+async function getSlots() {
+  if (!STATE.token && !STATE.cookie) { const ok = await login(); if (!ok) throw new Error('Login failed'); }
+  let r = await apiFetch(`/api/v1/device/cargoways?device_id=${CFG.deviceId}`);
+  if (r?.code !== 200) { await login(); r = await apiFetch(`/api/v1/device/cargoways?device_id=${CFG.deviceId}`); }
+  if (r?.code !== 200 || !r?.data?.cargoways) throw new Error('Could not read slots: ' + (r?.msg || r?.code));
+  const out = [];
+  for (const [row, list] of Object.entries(r.data.cargoways)) {
+    for (const c of list || []) {
+      if (String(c.is_delete) === '1') continue;
+      const name = c.goods?.goods_name || '';
+      const prod = getProductCode(name);
+      const vol = parseInt(c.cargoway_vol, 10) || 0, amount = parseInt(c.goods_amount, 10) || 0;
+      out.push({
+        id: String(c.cargoway_id), num: String(c.cargoway_num), row: parseInt(c.row_num, 10) || +row, col: parseInt(c.col_num, 10) || 0,
+        label: `${c.row_num}-${c.col_num}`, name, sku: prod?.code || '', img: c.goods?.goods_img || '',
+        vol, amount, free: Math.max(0, vol - amount),
+        merged: String(c.merge_type) !== '0' || String(c.merge_cargoway_id) !== '0',
+        disabled: String(c.cargoway_status) !== '0',
+      });
+    }
+  }
+  return out.sort((a, b) => a.row - b.row || a.col - b.col);
+}
+
+app.get('/api/slots', async (req, res) => {
+  try { res.json({ slots: await getSlots(), writeEnabled: !!process.env.REFILL_PIN }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+const REFILL_DONE = new Map();   // request token -> result (stops double submits)
+let REFILL_BUSY = false;
+app.post('/api/replenish', async (req, res) => {
+  const pin = process.env.REFILL_PIN;
+  if (!pin) return res.status(403).json({ error: 'Refill is disabled: set REFILL_PIN in the Render environment first.' });
+  const given = String(req.body?.pin || '');
+  const crypto = require('crypto');
+  const a = crypto.createHash('sha256').update(given).digest(), b = crypto.createHash('sha256').update(pin).digest();
+  if (!crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'Wrong PIN' });
+  const token = String(req.body?.token || '');
+  if (token && REFILL_DONE.has(token)) return res.json({ ...REFILL_DONE.get(token), duplicate: true });
+  if (REFILL_BUSY) return res.status(409).json({ error: 'Another refill is in progress' });
+  REFILL_BUSY = true;
+  try {
+    const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+    if (!changes.length || changes.length > 100) return res.status(400).json({ error: 'No changes' });
+    const slots = await getSlots();
+    const byId = new Map(slots.map(s => [s.id, s]));
+    const plan = [], seen = new Set();
+    for (const c of changes) {
+      const s = byId.get(String(c.id)), delta = parseInt(c.delta, 10);
+      if (!s) return res.status(400).json({ error: `Unknown slot ${c.id}` });
+      if (seen.has(s.id)) return res.status(400).json({ error: `Slot ${s.label} listed twice` });
+      seen.add(s.id);
+      if (!Number.isInteger(delta) || delta === 0) continue;
+      const after = s.amount + delta;
+      if (after < 0 || after > s.vol) return res.status(400).json({ error: `Slot ${s.label}: ${s.amount} ${delta > 0 ? '+' : ''}${delta} is outside 0–${s.vol}` });
+      plan.push({ s, delta, after });
+    }
+    if (!plan.length) return res.status(400).json({ error: 'Nothing to change' });
+    const results = [];
+    for (const p of plan) {
+      try {
+        const r = await apiFetch(`/api/v1//cargoways/${p.s.id}/replenish`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'goods_amount=' + encodeURIComponent((p.delta > 0 ? '+' : '') + p.delta),
+        });
+        const ok = r?.code === 200;
+        results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, after: p.after, ok, msg: ok ? '' : (r?.msg || `code ${r?.code}`) });
+        if (!ok) break;   // stop at first failure; nothing further is sent
+      } catch (e) { results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, ok: false, msg: e.message }); break; }
+    }
+    REFILL_CACHE.t = 0;
+    const out = { ok: results.every(r => r.ok) && results.length === plan.length, results, skipped: plan.length - results.length };
+    if (token) { REFILL_DONE.set(token, out); setTimeout(() => REFILL_DONE.delete(token), 600000); }
+    res.status(out.ok ? 200 : 502).json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+  finally { REFILL_BUSY = false; }
+});
+
 app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));
 app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
 app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
