@@ -30,6 +30,7 @@ const CFG = {
   slotCap:    2,     // capacity per slot
   stockOkMin: 3,     // OK if >= 3 units per SKU
   checkEvery: 5 * 60 * 1000, // 5 minutes
+  powerMinutes: 20,          // no signal from the machine for this long => POWERED OFF
   staleMinutes: 30,          // no heartbeat for this long => treat machine as OFFLINE
 
   // Email
@@ -257,7 +258,12 @@ async function fetchMachine() {
   const online = platformOnline && !stale;
   // Power: the platform has no true power flag, so treat the machine as powered
   // when the device record still returns a live telemetry reading (temperature).
-  const powered = (d.device_temp ?? dd.device_temp) !== undefined && (d.device_temp ?? dd.device_temp) !== null && (d.device_temp ?? dd.device_temp) !== '';
+  // Power: the machine keeps signalling the cloud (connect_time keeps advancing) even while it is
+  // unregistered/not online, and stops when it loses power. So power = recent signal.
+  const sigRaw = d.connect_time || dd.connect_time || '';
+  const sigDate = sigRaw ? new Date(String(sigRaw).replace(' ', 'T') + '+08:00') : null;
+  const signalMins = sigDate && !isNaN(sigDate) ? Math.max(0, Math.round((Date.now() - sigDate.getTime()) / 60000)) : null;
+  const powered = signalMins !== null ? signalMins <= CFG.powerMinutes : false;
   if (stale) console.log(`⚠️ STALE: platform says online but last heartbeat (${heartbeatSource}) was ${staleMins} min ago`);
 
   const rawConn = d.connect_time || dd.connect_time || '';
@@ -265,6 +271,8 @@ async function fetchMachine() {
   const ip = d.device_ip || d.ip || dd.device_ip || dd.ip || '—';
 
   // Registered: if machine is online it's definitely registered; also check explicit fields
+  const regVals = [d.register_status, d.is_register, d.bind_status, dd.register_status, dd.is_register, dd.bind_status].filter(v => v !== undefined && v !== null && v !== '');
+  const registeredExplicit = regVals.length ? regVals.some(v => v === 1 || v === '1' || v === true) : null;
   const registered = online || !!(
     d.register_status === 1 || d.register_status === '1' ||
     d.is_register === 1 || d.is_register === '1' ||
@@ -275,7 +283,7 @@ async function fetchMachine() {
   );
 
   console.log(`📡 Result: online=${online} (byStatus=${onlineByStatus} byFlag=${onlineByFlag} stale=${stale} hb=${heartbeatSource}/${staleMins}min) registered=${registered} ip=${ip}`);
-  return { temp, online, powered, platformOnline, stale, staleMins, heartbeatSource, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
+  return { temp, online, powered, signalMins, registeredExplicit, platformOnline, stale, staleMins, heartbeatSource, lastConn: ksaConn, fault: d.fault_code || '0', ip, registered };
 }
 async function fetchStock() {
   const d = await apiFetch(`/api/v1//devices/${CFG.deviceId}/cargoways`);
@@ -1221,10 +1229,8 @@ async function doCheck() {
 // ── WEB DASHBOARD ─────────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   const up = process.uptime();
-  const { temp, online, powered, lastConn, ip, registered, stale, staleMins, heartbeatSource } = STATE.machine;
+  const { temp, online, powered, signalMins, registeredExplicit, lastConn, registered, stale, staleMins } = STATE.machine;
   const pC = powered ? '#5A9E1E' : '#C8002A';
-  const hbNote = stale ? `⚠️ STALE: no heartbeat for ${staleMins} min`
-               : (heartbeatSource && heartbeatSource !== 'none' ? `Heartbeat ${staleMins} min ago` : 'Heartbeat: not provided by API');
   const tC = temp >= CFG.tempAlert ? '#C8002A' : '#1B3F8B';
 
   res.send(`<!DOCTYPE html>
@@ -1276,19 +1282,19 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     <div class="card" style="border-top:3px solid ${pC}">
       <div class="ci">${powered?'🟢':'🔴'}</div><div class="cl">Power Status</div>
       <div class="cv" style="color:${pC}">${powered?'POWERED ON':'POWERED OFF'}</div>
-      <div class="cs">${powered ? 'Telemetry received' : 'No telemetry received'}</div>
+      <div class="cs">${signalMins == null ? 'No signal data' : powered ? `Last signal ${signalMins} min ago` : `No signal for ${signalMins} min`}</div>
     </div>
 
-    <!-- 2. Connection / Registration -->
+    <!-- 2. Connection -->
     ${(() => {
       const cC = online ? '#5A9E1E' : '#C8002A';
-      const ipDisplay = ip !== '—' ? ip : 'No IP';
       const lastTxt = lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—';
       return `<div class="card" style="border-top:3px solid ${cC}">
-      <div class="ci">🌐</div><div class="cl">Connection / Registration</div>
-      <div class="cv" style="color:${cC};font-size:14px">${online?'✅ Connected':'❌ Not Connected'} · ${registered?'Registered':'Not Registered'}</div>
-      <div class="cs">IP: ${ipDisplay} · Last: ${lastTxt}</div>
-      <div class="cs" style="color:${stale?'#C8002A':'#7A9660'}">${hbNote}</div>
+      <div class="ci">🌐</div><div class="cl">Connection</div>
+      <div class="cv" style="color:${cC}">${online?'✅ Connected':'❌ Not Connected'}</div>
+      <div class="cs">Last connection: ${lastTxt}</div>
+      ${registeredExplicit !== null && registeredExplicit !== undefined ? `<div class="cs">Registration: ${registeredExplicit?'Registered':'Not registered'}</div>` : ''}
+      ${stale ? `<div class="cs" style="color:#C8002A">⚠️ STALE: no heartbeat for ${staleMins} min</div>` : ''}
     </div>`;
     })()}
 
@@ -1304,11 +1310,13 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       const totalUnits = CFG.products.reduce((s,p) => s + p.slots.reduce((ss,sl) => ss + (STATE.stock[sl]?.vol || 0), 0), 0);
       const totalCap   = CFG.products.reduce((s,p) => s + (p.code === 'EFMC06' ? 12 : 8), 0);
       const pct        = totalCap > 0 ? Math.round(totalUnits/totalCap*100) : 0;
-      const uColor     = totalUnits === 0 ? '#C8002A' : totalUnits < totalCap*0.3 ? '#E07020' : '#5A9E1E';
+      const restock    = pct < 20;
+      const uColor     = totalUnits === 0 || restock ? '#C8002A' : totalUnits < totalCap*0.3 ? '#E07020' : '#5A9E1E';
       return `
     <div class="card" style="border-top:3px solid ${uColor}">
       <div class="ci">📦</div><div class="cl">Total Units in Machine</div>
       <div class="cv" style="color:${uColor}">${totalUnits} / ${totalCap}</div>
+      ${restock ? '<div class="cs" style="color:#C8002A;font-weight:700">⚠️ Restock needed</div>' : ''}
       <div class="cs">${pct}% full · Last: ${STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
     </div>`;
     })()}
@@ -1357,8 +1365,7 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
         ['Check Interval','Every 5 minutes'],
         ['Machine ID', CFG.deviceId],
         ['Location', CFG.location],
-        ['IP Address', ip !== '—' ? ip : 'Not available'],
-        ['Registration', registered ? '✅ Registered' : '❌ Not registered'],
+        ...(registeredExplicit !== null && registeredExplicit !== undefined ? [['Registration', registeredExplicit ? '✅ Registered' : '❌ Not registered']] : []),
         ['Alert Email', CFG.email.to],
         ['Daily Report','09:30 AM KSA every day'],
         ['Monthly Report','09:00 AM KSA on 1st of each month'],
