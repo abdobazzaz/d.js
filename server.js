@@ -1674,6 +1674,38 @@ app.get('/api/sales.xlsx', async (req, res) => {
 
 app.get('/sales', (req, res) => res.sendFile(path.join(__dirname, 'sales.html')));
 
+// Diagnostic: probe replenishment (refill) endpoints. Read-only; only paths containing "replenish" are allowed.
+app.get('/debug-refill', async (req, res) => {
+  try {
+    if (!STATE.token && !STATE.cookie) await login();
+    const q = 'page=1&limit=10';
+    const given = typeof req.query.path === 'string' ? req.query.path : '';
+    if (given && (!given.startsWith('/api/v1/') || given.includes('..') || !/replenish/i.test(given))) {
+      return res.status(400).json({ error: 'path must start with /api/v1/ and contain "replenish"' });
+    }
+    const candidates = given ? [given] : [
+      `/api/v1/replenishment_stat?${q}`,
+      `/api/v1/device/replenishment_stat?${q}`,
+      `/api/v1/devices/replenishment_stat?${q}`,
+      `/api/v1/devices/${CFG.deviceId}/replenishment_stat?${q}`,
+      `/api/v1/replenishment/stat?${q}`,
+      `/api/v1/replenishers?type=all`,
+    ];
+    const tried = [];
+    for (const path of candidates) {
+      try {
+        const headers = { 'Content-Type': 'application/json' };
+        if (STATE.token)  headers['Authorization'] = `Bearer ${STATE.token}`;
+        if (STATE.cookie) headers['Cookie'] = STATE.cookie;
+        const r = await fetch(CFG.api + path, { headers, timeout: 20000 });
+        const text = await r.text();
+        tried.push({ path, status: r.status, bytes: text.length, preview: text.substring(0, 1500) });
+      } catch (e) { tried.push({ path, error: e.message }); }
+    }
+    res.json({ tried });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Diagnostic: shows status-like fields (names + values) the platform returns for this device.
 app.get('/debug-device', async (req, res) => {
   try {
