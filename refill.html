@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Refill history</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
+</head>
+<body>
+<div id="hdr"></div>
+<div class="wrap" id="out"><div class="msg">Loading…</div></div>
+<script src="/ui.js"></script>
+<script>
+(function(){
+  var U = RUI, esc = U.esc;
+  var actions = U.header('refill', { sub: 'Refill history · Dahban · Machine 203617400' });
+  var rpHost = document.createElement('div');
+  var xl = document.createElement('button'); xl.className = 'btn green'; xl.textContent = '⬇ Excel';
+  actions.appendChild(rpHost); actions.appendChild(xl);
+
+  var t = U.todayISO(), from = t.slice(0,8)+'01', to = t, showAll = false, last = null;
+  var qs = function(){ return 'from='+from+'&to='+to; };
+  U.rangePicker(rpHost, { from: from, to: to, onChange: function(f, e){ from = f; to = e; load(); } });
+  xl.onclick = function(){ window.location = '/api/refills.xlsx?'+qs(); };
+
+  function stat(l, v, s, cls){ return '<div class="stat '+(cls||'')+'"><div class="l">'+esc(l)+'</div><div class="v">'+esc(v)+'</div><div class="s">'+esc(s)+'</div></div>'; }
+  function sec(n, title, badge, body){
+    return '<div class="card"><div class="sec-h"><div class="sec-n">'+n+'</div><span class="sec-t">'+title+'</span>'+(badge?'<span class="badge">'+esc(badge)+'</span>':'')+'</div>'+body+'</div>';
+  }
+  function items(s){
+    return s.items.map(function(i){ return esc(i.sku)+' <b class="pos">+'+i.added+'</b>'+(i.removed?' <b class="neg">−'+i.removed+'</b>':''); }).join(' · ');
+  }
+  function render(d){
+    last = d; var k = d.kpis, h = '';
+    h += '<div class="stats">'+
+      stat('Refill sessions', k.sessions, d.from+' → '+d.to, 'info')+
+      stat('Units added', '+'+k.added, 'put into the machine', 'good')+
+      stat('Units removed', k.removed ? '−'+k.removed : '0', 'taken out / corrections', k.removed ? 'warn' : '')+
+      stat('Last refill', k.last || '—', k.people+' '+(k.people===1?'person':'people')+' in range')+
+      '</div>';
+
+    var sb;
+    if (!d.sessions.length) sb = '<div class="msg">No refills in this range.</div>';
+    else {
+      var list = showAll ? d.sessions : d.sessions.slice(0,100);
+      sb = '<div class="scroll"><table><tr><th>Start (KSA)</th><th>End</th><th>Refilled by</th><th>Products</th><th class="n">Added</th><th class="n">Removed</th></tr>';
+      list.forEach(function(s){
+        sb += '<tr><td>'+esc(s.start)+'</td><td>'+esc(s.end.slice(11))+'</td><td>'+esc(s.who)+'</td><td>'+items(s)+'</td><td class="n pos">+'+s.added+'</td><td class="n'+(s.removed?' neg':'')+'">'+(s.removed?'−'+s.removed:'0')+'</td></tr>';
+      });
+      sb += '</table></div>';
+      if (d.sessions.length > 100 && !showAll) sb += '<div class="more"><button class="btn" id="all">Show all '+d.sessions.length+'</button></div>';
+    }
+    h += sec(1, 'Refill sessions', String(d.sessions.length), sb);
+
+    var pb = '<div class="scroll"><table><tr><th>Product</th><th class="n">Added</th><th class="n">Removed</th></tr>';
+    d.bySku.forEach(function(x){ pb += '<tr><td><b>'+esc(x.sku)+'</b> · '+esc(x.product)+'</td><td class="n pos">+'+x.added+'</td><td class="n'+(x.removed?' neg':'')+'">'+(x.removed?'−'+x.removed:'0')+'</td></tr>'; });
+    if (!d.bySku.length) pb += '<tr><td colspan="3" class="msg">No data</td></tr>';
+    h += sec(2, 'By product', '', pb+'</table></div>');
+
+    var wb = '<div class="scroll"><table><tr><th>Person</th><th class="n">Sessions</th><th class="n">Added</th><th class="n">Removed</th></tr>';
+    d.byWho.forEach(function(x){ wb += '<tr><td>'+esc(x.who)+'</td><td class="n">'+x.sessions+'</td><td class="n pos">+'+x.added+'</td><td class="n'+(x.removed?' neg':'')+'">'+(x.removed?'−'+x.removed:'0')+'</td></tr>'; });
+    if (!d.byWho.length) wb += '<tr><td colspan="4" class="msg">No data</td></tr>';
+    h += sec(3, 'By person', '', wb+'</table></div>');
+
+    h += '<div class="msg" style="padding:4px">Sessions group one person\'s slot refills made within 30 minutes of each other. '+d.loaded+' records loaded'+(d.total?' of '+d.total:'')+'.</div>';
+    document.getElementById('out').innerHTML = h;
+    var a = document.getElementById('all'); if (a) a.onclick = function(){ showAll = true; render(last); };
+  }
+  function load(){
+    showAll = false;
+    document.getElementById('out').innerHTML = '<div class="msg">Loading… (first load can take ~15 s)</div>';
+    U.getJSON('/api/refills?'+qs()).then(function(d){
+      if (d.error) throw new Error(d.error);
+      render(d);
+    }).catch(function(e){ document.getElementById('out').innerHTML = '<div class="msg err">Could not load refills: '+esc(e.message)+'</div>'; });
+  }
+  load();
+})();
+</script>
+</body></html>

@@ -1248,6 +1248,15 @@ body{font-family:'Cairo',sans-serif;background:#F8F1E7;color:#1C2E08;padding:0}
 .nav-r{color:#7A9660;font-size:11px;text-align:right;display:flex;flex-direction:column;gap:3px;font-weight:700}
 .nav-stat{background:#fff;padding:5px 11px;border-radius:14px;border:1.5px solid #E8D5B7;font-family:Cairo,sans-serif}
 .wrap{max-width:960px;margin:20px auto;padding:0 16px}
+.tabs{max-width:960px;margin:14px auto 0;padding:0 16px;display:flex;gap:6px;flex-wrap:wrap}
+.pill{padding:7px 14px;font-size:13px;font-weight:700;border-radius:16px;background:#fff;color:#57534e;border:1px solid #e7e5e4;text-decoration:none}
+.pill.on{background:#84BD00;color:#173404;border-color:#84BD00}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px}
+.tile{display:flex;align-items:center;gap:14px;border-radius:16px;padding:20px;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.tile.t1{background:#84BD00;color:#173404}.tile.t2{background:#173404;color:#84BD00}
+.ti{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tx{flex:1;min-width:0}.tt{font-size:17px;font-weight:900}.td{font-size:12px;font-weight:600;margin-top:2px;opacity:.85}
+.tile span{font-size:26px;font-weight:700}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
 .card{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
 .ci{font-size:24px;margin-bottom:8px}
@@ -1272,10 +1281,12 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
     <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
   </div>
   <div class="nav-r">
-    <a class="nav-stat" href="/sales" style="text-decoration:none;color:#1B3F8B;font-weight:900">📊 Sales</a>
     <div class="nav-stat">🔄 Auto-refresh: 60s</div>
     <div class="nav-stat">⏱️ Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
   </div>
+</div>
+<div class="tabs">
+  <a class="pill on" href="/">Monitor</a><a class="pill" href="/sales">Sales</a><a class="pill" href="/refill">Refill</a>
 </div>
 <div class="wrap">
    <div class="grid">
@@ -1356,6 +1367,10 @@ footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacin
       <div class="cv" style="color:#1B3F8B">${STATE.stats.monCount}</div>
       <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' })}</div>
     </div>
+  </div>
+  <div class="tiles">
+    <a class="tile t1" href="/sales"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><div class="tx"><div class="tt">Sales report</div><div class="td">Pick a date range, see revenue by day and product, export to Excel</div></div><span>›</span></a>
+    <a class="tile t2" href="/refill"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg></div><div class="tx"><div class="tt">Refill history</div><div class="td">Who refilled, when, and how many units went into each product</div></div><span>›</span></a>
   </div>
   <div class="sec">
     <div class="sh" style="background:#1B3F8B">⚙️ Monitor Status</div>
@@ -1673,6 +1688,131 @@ app.get('/api/sales.xlsx', async (req, res) => {
 });
 
 app.get('/sales', (req, res) => res.sendFile(path.join(__dirname, 'sales.html')));
+
+// ── REFILL PAGE: replenishment history ────────────────────────────────────
+let REFILL_CACHE = { t: 0, data: [], total: null };
+async function getRefillRecords() {
+  if (Date.now() - REFILL_CACHE.t < 120000 && REFILL_CACHE.data.length) return REFILL_CACHE;
+  if (!STATE.token && !STATE.cookie) { const ok = await login(); if (!ok) throw new Error('Login failed'); }
+  const LIMIT = 100, BATCH = 4, MAX_PAGES = 24;
+  const seen = new Map();
+  let total = null, page = 1, done = false;
+  while (!done && page <= MAX_PAGES) {
+    const pages = Array.from({ length: BATCH }, (_, i) => page + i);
+    const results = await Promise.all(pages.map(p =>
+      apiFetch(`/api/v1/device/replenishment_stat?page=${p}&limit=${LIMIT}`).catch(e => ({ _err: e.message }))));
+    let added = 0;
+    for (const r of results) {
+      if (r._err) { if (!seen.size) throw new Error(r._err); done = true; continue; }
+      const d = r?.data || {};
+      if (total == null) total = d.total ?? d.count ?? d.total_count ?? d.totalCount ?? null;
+      const recs = Array.isArray(d.records) ? d.records : [];
+      if (!recs.length) done = true;
+      for (const x of recs) {
+        const id = x.record_id ?? `${x.create_at}|${x.cargoway_num}|${x.admin_name}|${x.goods_amount}`;
+        if (!seen.has(id)) { seen.set(id, x); added++; }
+      }
+    }
+    if (!added) done = true;
+    page += BATCH;
+  }
+  REFILL_CACHE = { t: Date.now(), data: [...seen.values()], total };
+  return REFILL_CACHE;
+}
+
+async function buildRefills(q) {
+  const r = parseSalesRange(q);
+  const cache = await getRefillRecords();
+  const ts = s => Date.parse(String(s).replace(' ', 'T') + '+08:00');
+  const recs = cache.data
+    .filter(x => (x.create_at || '') >= r.start && (x.create_at || '') < r.end)
+    .map(x => {
+      const prod = getProductCode(x.goods_name || '');
+      const apiS = String(x.cargoway_num || '');
+      return {
+        id: x.record_id, t: ts(x.create_at), time: toKSATime(x.create_at),
+        who: x.admin_name || '—', qty: parseInt(x.goods_amount, 10) || 0,
+        sku: prod?.code || '—', product: prod?.name || x.goods_name || '—',
+        slot: CFG.slotMap[apiS] || apiS || '—',
+      };
+    }).sort((a, b) => a.t - b.t);
+
+  // Group events into refill sessions: same person, gaps ≤ 30 minutes
+  const GAP = 30 * 60000, sessions = [];
+  const open = {};
+  for (const e of recs) {
+    let s = open[e.who];
+    if (!s || e.t - s.last > GAP) {
+      s = { who: e.who, start: e.time, end: e.time, first: e.t, last: e.t, added: 0, removed: 0, items: {}, slots: new Set() };
+      open[e.who] = s; sessions.push(s);
+    }
+    s.last = e.t; s.end = e.time; s.slots.add(e.slot);
+    if (e.qty > 0) s.added += e.qty; else s.removed += -e.qty;
+    const k = e.sku;
+    (s.items[k] = s.items[k] || { sku: k, product: e.product, added: 0, removed: 0 });
+    if (e.qty > 0) s.items[k].added += e.qty; else s.items[k].removed += -e.qty;
+  }
+  const out = sessions.map(s => ({
+    who: s.who, start: s.start, end: s.end, added: s.added, removed: s.removed, net: s.added - s.removed,
+    slots: s.slots.size, items: Object.values(s.items),
+  })).sort((a, b) => b.start.localeCompare(a.start));
+
+  const bySku = {};
+  recs.forEach(e => {
+    const b = (bySku[e.sku] = bySku[e.sku] || { sku: e.sku, product: e.product, added: 0, removed: 0 });
+    if (e.qty > 0) b.added += e.qty; else b.removed += -e.qty;
+  });
+  const byWho = {};
+  out.forEach(s => {
+    const b = (byWho[s.who] = byWho[s.who] || { who: s.who, sessions: 0, added: 0, removed: 0 });
+    b.sessions++; b.added += s.added; b.removed += s.removed;
+  });
+  const added = out.reduce((n, s) => n + s.added, 0), removed = out.reduce((n, s) => n + s.removed, 0);
+  return {
+    from: r.from, to: r.to,
+    kpis: { sessions: out.length, added, removed, net: added - removed, people: Object.keys(byWho).length, last: out[0]?.start || null },
+    sessions: out,
+    bySku: Object.values(bySku).sort((a, b) => b.added - a.added),
+    byWho: Object.values(byWho).sort((a, b) => b.added - a.added),
+    events: recs.slice().reverse().map(({ t, ...e }) => e),
+    loaded: cache.data.length, total: cache.total,
+  };
+}
+
+app.get('/api/refills', async (req, res) => {
+  try { res.json(await buildRefills(req.query)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/refills.xlsx', async (req, res) => {
+  try {
+    const d = await buildRefills(req.query);
+    const wb = new ExcelJS.Workbook();
+    const head = ws => { ws.getRow(1).font = { bold: true, color: { argb: 'FF173404' } }; ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF84BD00' } }; };
+    const s1 = wb.addWorksheet('Summary');
+    s1.columns = [{ header: 'Metric', width: 28 }, { header: 'Value', width: 22 }];
+    [['From', d.from], ['To', d.to], ['Refill sessions', d.kpis.sessions], ['Units added', d.kpis.added],
+     ['Units removed', d.kpis.removed], ['Net units', d.kpis.net], ['People', d.kpis.people]].forEach(r => s1.addRow(r));
+    head(s1);
+    const s2 = wb.addWorksheet('Sessions');
+    s2.columns = [{ header: 'Start (KSA)', width: 18 }, { header: 'End (KSA)', width: 18 }, { header: 'Refilled by', width: 22 }, { header: 'Added', width: 9 }, { header: 'Removed', width: 10 }, { header: 'Net', width: 8 }, { header: 'Slots', width: 8 }, { header: 'Products', width: 60 }];
+    d.sessions.forEach(s => s2.addRow([s.start, s.end, s.who, s.added, s.removed, s.net, s.slots, s.items.map(i => `${i.sku} +${i.added}${i.removed ? ' −' + i.removed : ''}`).join(', ')])); head(s2);
+    const s3 = wb.addWorksheet('By product');
+    s3.columns = [{ header: 'SKU', width: 10 }, { header: 'Product', width: 36 }, { header: 'Added', width: 10 }, { header: 'Removed', width: 10 }];
+    d.bySku.forEach(x => s3.addRow([x.sku, x.product, x.added, x.removed])); head(s3);
+    const s4 = wb.addWorksheet('Events');
+    s4.columns = [{ header: 'Time (KSA)', width: 18 }, { header: 'Refilled by', width: 22 }, { header: 'SKU', width: 10 }, { header: 'Product', width: 36 }, { header: 'Slot', width: 8 }, { header: 'Qty', width: 8 }];
+    d.events.forEach(x => s4.addRow([x.time, x.who, x.sku, x.product, x.slot, x.qty])); head(s4);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="radwa-refills-${d.from}_to_${d.to}.xlsx"`);
+    await wb.xlsx.write(res); res.end();
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));
+app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
+app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
+app.get('/logo.png', (req, res) => res.sendFile(path.join(__dirname, 'New Radwa Logo with text- trasperant.png')));
 
 // Diagnostic: probe replenishment (refill) endpoints. Read-only; only paths containing "replenish" are allowed.
 app.get('/debug-refill', async (req, res) => {
