@@ -86,6 +86,9 @@ td{padding:7px 10px;font-size:12px;border-bottom:.5px solid #eee}
 
 @media(max-width:760px){
   .hdr-in,.wrap{padding-left:14px;padding-right:14px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .stat{padding:12px}
+  .stat .v{font-size:19px}
   .rp-pop{position:fixed;left:8px;right:8px;top:70px;width:auto;max-width:none;grid-template-columns:1fr;max-height:calc(100vh - 90px);overflow:auto}
   .rp-pre{flex-direction:row;flex-wrap:wrap}
   .rp-months{grid-template-columns:1fr}

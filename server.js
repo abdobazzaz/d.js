@@ -1267,359 +1267,161 @@ app.get('/', (req, res) => {
   const pC = powered ? '#5A9E1E' : '#C8002A';
   const tC = temp >= CFG.tempAlert ? '#C8002A' : '#1B3F8B';
 
+  const fmt = (d, o) => d ? new Date(d).toLocaleString('en-GB', Object.assign({ timeZone: 'Asia/Riyadh', hour12: true }, o)) : '—';
+  const fmtShort = d => fmt(d, { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+  const ICON = {
+    monitor: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
+    sales:   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    refill:  '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
+  };
+  const svg = (k, c) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
+  const pill = (k, href, label) => `<a class="pill${k === 'monitor' ? ' on' : ''}" href="${href}">${svg(k, k === 'monitor' ? '#173404' : '#57534e')}${label}</a>`;
+  const stat = (label, value, sub, cls, extra) => `<div class="stat ${cls || ''}"><div class="l">${label}</div><div class="v">${value}</div><div class="s">${sub || ''}</div>${extra || ''}</div>`;
+  const sec = (n, title, badge, body, flush) => `<div class="card" style="${flush ? 'padding:20px 20px 8px' : ''}"><div class="sec-h"><div class="sec-n">${n}</div><span class="sec-t">${title}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</div>${body}</div>`;
+
+  // Top status cards
+  const lastTxt = lastConn !== '—' ? fmtShort(new Date(lastConn.replace(' ', 'T') + ':00+03:00')) : '—';
+  const totalUnits = CFG.products.reduce((s,p) => s + p.slots.reduce((ss,sl) => ss + (STATE.stock[sl]?.vol || 0), 0), 0);
+  const totalCap   = CFG.products.reduce((s,p) => s + (p.code === 'EFMC06' ? 12 : 8), 0);
+  const pct        = totalCap > 0 ? Math.round(totalUnits/totalCap*100) : 0;
+  const restock    = pct < 20;
+  const uCls       = totalUnits === 0 || restock ? 'bad' : totalUnits < totalCap*0.3 ? 'warn' : 'good';
+  const lastCheckTxt = STATE.lastCheck ? fmt(STATE.lastCheck, { hour:'2-digit', minute:'2-digit' }) : 'starting…';
+  const statusCards = [
+    stat('Power status', powered ? 'POWERED ON' : 'POWERED OFF',
+      signalMins == null ? 'No signal data' : powered ? `Last signal ${signalMins} min ago` : `No signal for ${signalMins} min`, powered ? 'good' : 'bad'),
+    stat('Connection', online ? 'Connected' : 'Not connected', `Last connection ${lastTxt}`, online ? 'good' : 'bad',
+      (registeredExplicit !== null && registeredExplicit !== undefined ? `<div class="s">Registration: ${registeredExplicit ? 'Registered' : 'Not registered'}</div>` : '') +
+      (stale ? `<div class="s" style="color:#be123c;font-weight:600">⚠ No heartbeat for ${staleMins} min</div>` : '')),
+    stat('Temperature', `${temp}°C`, temp >= CFG.tempAlert ? '⚠ Critical' : 'Normal', temp >= CFG.tempAlert ? 'bad' : 'info'),
+    stat('Units in machine', `${totalUnits} / ${totalCap}`, restock ? `⚠ Restock needed · ${pct}% full` : `${pct}% full`, uCls),
+  ].join('');
+
+  // Today / month numbers
+  const todayNums = [
+    stat('Today revenue', `${STATE.stats.today.toFixed(2)} SAR`, `${STATE.stats.todayCount} orders today`, 'good'),
+    stat('This month', `${STATE.stats.month.toFixed(2)} SAR`, `${STATE.stats.monCount} orders`, 'info'),
+    stat('Completed today', STATE.stats.todayCount, fmt(Date.now(), { weekday:'long', day:'numeric', month:'short' })),
+    stat('Completed this month', STATE.stats.monCount, fmt(Date.now(), { month:'long', year:'numeric' })),
+    stat('Alerts sent', STATE.alerts.length, `to ${esc(CFG.email.to)}`),
+  ].join('');
+
+  // Today's orders
+  const todayOrders = STATE.stats.todayOrders || [];
+  const todayRev = todayOrders.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
+  const skuSum = {};
+  CFG.products.forEach(p => { skuSum[p.code] = { count:0, rev:0 }; });
+  todayOrders.forEach(o => {
+    const p = getProductCode((o.goods?.[0] || {}).goods_name || '');
+    if (p) { skuSum[p.code].count++; skuSum[p.code].rev += parseFloat(o.order_amount||0); }
+  });
+  const skuRows = CFG.products.map(p => {
+    const s = skuSum[p.code];
+    return `<tr><td><b>${p.code}</b></td><td>${p.emoji} ${p.name}</td><td class="n">${s.count}</td><td class="n ${s.count ? 'pos' : ''}">${s.rev.toFixed(2)} SAR</td></tr>`;
+  }).join('') + `<tr style="background:#fafaf9"><td colspan="2"><b>Total</b></td><td class="n"><b>${todayOrders.length}</b></td><td class="n"><b>${todayRev.toFixed(2)} SAR</b></td></tr>`;
+  const orderRow = (o, i, withDate) => {
+    const g = o.goods?.[0] || {};
+    const prod = getProductCode(g.goods_name || '');
+    const apiS = String(g.cargoway_num || o.cargoway_num || '');
+    const slot = CFG.slotMap[apiS] || apiS || '—';
+    const k = toKSATime(o.pay_time);
+    const price = parseFloat(g.sale_price || o.order_amount || 0).toFixed(2);
+    return `<tr><td>${i+1}</td><td><b>${prod?.code || '—'}</b></td><td>${prod?.emoji || ''} ${esc(prod?.name || g.goods_name || '—')}</td><td>${esc(slot)}</td><td>${withDate ? k : k.substring(11)}</td><td class="n pos">${price} SAR</td></tr>`;
+  };
+  const ordHead = '<tr><th>#</th><th>Code</th><th>Product</th><th>Slot</th><th>Time (KSA)</th><th class="n">Price</th></tr>';
+  const todayBody = todayOrders.length
+    ? `<div class="scroll"><table>${ordHead}${todayOrders.map((o,i)=>orderRow(o,i,false)).join('')}</table></div>`
+    : '<div class="msg">No completed orders today yet</div>';
+
+  // Stock
+  const stockBody = CFG.products.map(p => {
+    const u = p.slots.reduce((s,sl)=>s+(STATE.stock[sl]?.vol||0),0), c = p.slots.length*2;
+    const st = u===0 ? 'EMPTY' : u<=2 ? 'LOW' : 'OK';
+    return `<div class="kv"><span class="k"><b>${p.code}</b></span><span style="flex:1">${p.emoji} ${p.name}</span><span class="tag ${st.toLowerCase()}">${u}/${c} · ${st}</span></div>`;
+  }).join('');
+
+  // Month's orders
+  const sortedMonth = [...(STATE.stats.monthOrders || [])].sort((a,b) => (b.pay_time||'').localeCompare(a.pay_time||''));
+  const monthRev = sortedMonth.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
+  const monthBody = sortedMonth.length
+    ? `<div class="scroll" style="max-height:600px;overflow-y:auto"><table>${ordHead}${sortedMonth.map((o,i)=>orderRow(o,i,true)).join('')}<tr style="background:#fafaf9"><td colspan="5"><b>Total · ${sortedMonth.length} order${sortedMonth.length!==1?'s':''}</b></td><td class="n"><b>${monthRev.toFixed(2)} SAR</b></td></tr></table></div>`
+    : '<div class="msg">No completed orders this month yet</div>';
+
+  // Alerts
+  const alertsBody = STATE.alerts.length === 0
+    ? '<div class="msg">No alerts yet · all good ✓</div>'
+    : STATE.alerts.slice(0,20).map(a => `<div class="kv"><span class="k">${fmtShort(a.time)}</span><span style="flex:1;font-weight:600">${esc(a.subject)}</span></div>`).join('');
+
+  // Monitor status
+  const statusRows = [
+    ['Status','🟢 Running 24/7'],
+    ['Last check', STATE.lastCheck ? fmt(STATE.lastCheck, { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) + ' KSA' : 'Starting...'],
+    ['Check interval','Every 5 minutes'],
+    ['Machine ID', CFG.deviceId],
+    ['Location', CFG.location],
+    ...(registeredExplicit !== null && registeredExplicit !== undefined ? [['Registration', registeredExplicit ? '✅ Registered' : '❌ Not registered']] : []),
+    ['Alert email', esc(CFG.email.to)],
+    ['Daily report','09:30 AM KSA every day'],
+    ['Monthly report','09:00 AM KSA on 1st of each month'],
+    ['Temp threshold', `${CFG.tempAlert}°C`],
+    ['Stock low alert','≤ 2 units per SKU'],
+    ['Stock OK','≥ 3 units per SKU'],
+    ['Server uptime', `${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m`],
+  ].map(([l,v]) => `<div class="kv"><span class="k">${l}</span><span style="font-weight:600">${v}</span></div>`).join('');
+
+  const errBody = STATE.errors.length ? sec('!', 'Recent errors', String(STATE.errors.length),
+    STATE.errors.slice(0,10).map(e => `<div class="kv" style="color:#be123c"><span class="k">${fmtShort(e.time)}</span><span style="flex:1">${esc(e.msg)}</span></div>`).join('')) : '';
+
   res.send(`<!DOCTYPE html>
-<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="refresh" content="60"><title>Radwa Vending Machine Monitor</title>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Cairo',sans-serif;background:#F8F1E7;color:#1C2E08;padding:0}
-.nav{background:#F8F1E7;padding:18px 24px;display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid #F5A623;flex-wrap:wrap;gap:12px}
-.nav-l{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
-.brand-logo{height:64px;width:auto;object-fit:contain;flex-shrink:0}
-.brand-text{font-size:24px;font-weight:900;color:#1B3F8B;letter-spacing:3px}
-.brand-title{color:#1B3F8B;font-size:15px;font-weight:900;letter-spacing:1.5px;text-transform:uppercase}
-.nav-r{color:#7A9660;font-size:11px;text-align:right;display:flex;flex-direction:column;gap:3px;font-weight:700}
-.nav-stat{background:#fff;padding:5px 11px;border-radius:14px;border:1.5px solid #E8D5B7;font-family:Cairo,sans-serif}
-.wrap{max-width:960px;margin:20px auto;padding:0 16px}
-.tabs{max-width:960px;margin:14px auto 0;padding:0 16px;display:flex;gap:6px;flex-wrap:wrap}
-.pill{padding:7px 14px;font-size:13px;font-weight:700;border-radius:16px;background:#fff;color:#57534e;border:1px solid #e7e5e4;text-decoration:none}
-.pill.on{background:#84BD00;color:#173404;border-color:#84BD00}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:20px}
-.tile{display:flex;align-items:center;gap:14px;border-radius:16px;padding:20px;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.tile{display:flex;align-items:center;gap:16px;border-radius:16px;padding:20px 22px;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,.05)}
 .tile.t1{background:#84BD00;color:#173404}.tile.t2{background:#173404;color:#84BD00}
-.ti{width:48px;height:48px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.tx{flex:1;min-width:0}.tt{font-size:17px;font-weight:900}.td{font-size:12px;font-weight:600;margin-top:2px;opacity:.85}
-.tile span{font-size:26px;font-weight:700}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
-.card{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.ci{font-size:24px;margin-bottom:8px}
-.cl{font-size:9px;color:#7A9660;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:4px}
-.cv{font-size:20px;font-weight:900;line-height:1;margin-bottom:3px}
-.cs{font-size:10px;color:#7A9660}
-.sec{background:#fff;border:1.5px solid #E8D5B7;border-radius:14px;overflow:hidden;margin-bottom:16px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.sh{padding:11px 16px;color:#fff;font-weight:700;font-size:13px}
-.sb{padding:14px}
-.ar{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #F0E4D0;font-size:12px}
-.ar:last-child{border-bottom:none}
-.at{color:#7A9660;flex-shrink:0;width:150px;font-size:10px}
-.as{font-weight:700;color:#1C2E08}
-.er{padding:8px 0;border-bottom:1px solid #F0E4D0;font-size:11px;color:#C8002A}
-footer{text-align:center;padding:20px;font-size:11px;color:#7A9660;letter-spacing:1px}
-.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700}
+.ti{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tx{flex:1;min-width:0}.tt{font-size:18px;font-weight:800}.td{font-size:13px;font-weight:500;margin-top:2px;opacity:.85}
+.tile>span{font-size:28px;font-weight:700}
+.kv{display:flex;gap:12px;padding:9px 0;border-bottom:.5px solid #eee;font-size:13px;align-items:center}
+.kv:last-child{border-bottom:none}
+.kv .k{color:#78716c;width:150px;flex-shrink:0;font-size:12px}
+.tag{font-size:12px;font-weight:700;border-radius:999px;padding:3px 10px;border:1px solid}
+.tag.ok{color:#047857;background:#ecfdf5;border-color:#a7f3d0}
+.tag.low{color:#b45309;background:#fffbeb;border-color:#fde68a}
+.tag.empty{color:#be123c;background:#fff1f2;border-color:#fecdd3}
+.foot{text-align:center;color:#78716c;font-size:11px;padding:6px 0 24px}
+@media(max-width:640px){.kv .k{width:100px}.tile{padding:16px}}
 </style></head>
 <body>
-<div class="nav">
-  <div class="nav-l">
-   <img src="https://raw.githubusercontent.com/abdobazzaz/d.js/main/New%20Radwa%20Logo%20with%20text-%20trasperant.png" alt="Radwa" class="brand-logo">
-    <div class="brand-title">RADWA VENDING MACHINE MONITOR</div>
+<div class="hdr"><div class="hdr-in">
+  <div class="hdr-top">
+    <div class="brand"><img src="/logo.png" alt="Radwa"><div><div class="title">Vending Machine Monitor</div><div class="sub">${esc(CFG.location)} · Machine ${CFG.deviceId}</div></div></div>
+    <div class="actions">
+      <div class="rp-btn" style="cursor:default"><span style="width:8px;height:8px;border-radius:50%;background:${powered && online ? '#22c55e' : '#ef4444'}"></span><span>Last check ${lastCheckTxt}</span></div>
+      <button type="button" class="btn" onclick="location.reload()">Refresh</button>
+    </div>
   </div>
-  <div class="nav-r">
-    <div class="nav-stat">🔄 Auto-refresh: 60s</div>
-    <div class="nav-stat">⏱️ Uptime: ${Math.floor(up/3600)}h ${Math.floor(up%3600/60)}m</div>
-  </div>
-</div>
-<div class="tabs">
-  <a class="pill on" href="/">Monitor</a><a class="pill" href="/sales">Sales</a><a class="pill" href="/refill">Refill</a>
-</div>
+  <div class="pills">${pill('monitor','/','Monitor')}${pill('sales','/sales','Sales')}${pill('refill','/refill','Refill')}</div>
+</div></div>
 <div class="wrap">
-   <div class="grid">
-    <!-- 1. Power Status -->
-    <div class="card" style="border-top:3px solid ${pC}">
-      <div class="ci">${powered?'🟢':'🔴'}</div><div class="cl">Power Status</div>
-      <div class="cv" style="color:${pC}">${powered?'POWERED ON':'POWERED OFF'}</div>
-      <div class="cs">${signalMins == null ? 'No signal data' : powered ? `Last signal ${signalMins} min ago` : `No signal for ${signalMins} min`}</div>
-    </div>
-
-    <!-- 2. Connection -->
-    ${(() => {
-      const cC = online ? '#5A9E1E' : '#C8002A';
-      const lastTxt = lastConn !== '—' ? new Date(lastConn.replace(' ', 'T') + ':00+03:00').toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—';
-      return `<div class="card" style="border-top:3px solid ${cC}">
-      <div class="ci">🌐</div><div class="cl">Connection</div>
-      <div class="cv" style="color:${cC}">${online?'✅ Connected':'❌ Not Connected'}</div>
-      <div class="cs">Last connection: ${lastTxt}</div>
-      ${registeredExplicit !== null && registeredExplicit !== undefined ? `<div class="cs">Registration: ${registeredExplicit?'Registered':'Not registered'}</div>` : ''}
-      ${stale ? `<div class="cs" style="color:#C8002A">⚠️ STALE: no heartbeat for ${staleMins} min</div>` : ''}
-    </div>`;
-    })()}
-
-    <!-- 3. Temperature -->
-    <div class="card" style="border-top:3px solid ${tC}">
-      <div class="ci">🌡️</div><div class="cl">Temperature</div>
-      <div class="cv" style="color:${tC}">${temp}°C</div>
-      <div class="cs">${temp>=CFG.tempAlert?'⚠️ CRITICAL':'✓ Normal'} · Last: ${STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
-    </div>
-
-    <!-- 3. Total Units (NEW) -->
-    ${(() => {
-      const totalUnits = CFG.products.reduce((s,p) => s + p.slots.reduce((ss,sl) => ss + (STATE.stock[sl]?.vol || 0), 0), 0);
-      const totalCap   = CFG.products.reduce((s,p) => s + (p.code === 'EFMC06' ? 12 : 8), 0);
-      const pct        = totalCap > 0 ? Math.round(totalUnits/totalCap*100) : 0;
-      const restock    = pct < 20;
-      const uColor     = totalUnits === 0 || restock ? '#C8002A' : totalUnits < totalCap*0.3 ? '#E07020' : '#5A9E1E';
-      return `
-    <div class="card" style="border-top:3px solid ${uColor}">
-      <div class="ci">📦</div><div class="cl">Total Units in Machine</div>
-      <div class="cv" style="color:${uColor}">${totalUnits} / ${totalCap}</div>
-      ${restock ? '<div class="cs" style="color:#C8002A;font-weight:700">⚠️ Restock needed</div>' : ''}
-      <div class="cs">${pct}% full · Last: ${STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone:'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:true }) : '—'}</div>
-    </div>`;
-    })()}
-
-    <!-- 4. Alerts Sent -->
-    <div class="card" style="border-top:3px solid #7A9660">
-      <div class="ci">📧</div><div class="cl">Alerts Sent</div>
-      <div class="cv" style="color:#7A9660">${STATE.alerts.length}</div>
-      <div class="cs">to ${CFG.email.to}</div>
-    </div>
-
-    <!-- 5. Today Revenue -->
-    <div class="card" style="border-top:3px solid #5A9E1E">
-      <div class="ci">💰</div><div class="cl">Today Revenue</div>
-      <div class="cv" style="color:#5A9E1E">${STATE.stats.today.toFixed(2)} SAR</div>
-      <div class="cs">${STATE.stats.todayCount} orders today</div>
-    </div>
-
-    <!-- 6. This Month -->
-    <div class="card" style="border-top:3px solid #1B3F8B">
-      <div class="ci">💵</div><div class="cl">This Month</div>
-      <div class="cv" style="color:#1B3F8B">${STATE.stats.month.toFixed(2)} SAR</div>
-      <div class="cs">${STATE.stats.monCount} orders</div>
-    </div>
-
-    <!-- 7. Completed Today -->
-    <div class="card" style="border-top:3px solid #F5A623">
-      <div class="ci">✅</div><div class="cl">Completed Today</div>
-      <div class="cv" style="color:#F5A623">${STATE.stats.todayCount}</div>
-      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'short' })}</div>
-    </div>
-
-    <!-- 8. Completed This Month -->
-    <div class="card" style="border-top:3px solid #1B3F8B">
-      <div class="ci">📅</div><div class="cl">Completed This Month</div>
-      <div class="cv" style="color:#1B3F8B">${STATE.stats.monCount}</div>
-      <div class="cs">${new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' })}</div>
-    </div>
-  </div>
+  <div class="stats">${statusCards}</div>
   <div class="tiles">
-    <a class="tile t1" href="/sales"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg></div><div class="tx"><div class="tt">Sales report</div><div class="td">Pick a date range, see revenue by day and product, export to Excel</div></div><span>›</span></a>
-    <a class="tile t2" href="/refill"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg></div><div class="tx"><div class="tt">Refill history</div><div class="td">Who refilled, when, and how many units went into each product</div></div><span>›</span></a>
+    <a class="tile t1" href="/sales"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON.sales}</svg></div><div class="tx"><div class="tt">Sales report</div><div class="td">Pick a date range, see revenue by day and product, export to Excel</div></div><span>›</span></a>
+    <a class="tile t2" href="/refill"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON.refill}</svg></div><div class="tx"><div class="tt">Refill machine</div><div class="td">Add stock slot by slot and see who refilled, when and how much</div></div><span>›</span></a>
   </div>
-  <div class="sec">
-    <div class="sh" style="background:#1B3F8B">⚙️ Monitor Status</div>
-    <div class="sb">
-      ${[
-        ['Status','🟢 Running 24/7'],
-        ['Last Check', STATE.lastCheck ? new Date(STATE.lastCheck).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: true }) + ' KSA' : 'Starting...'],
-        ['Check Interval','Every 5 minutes'],
-        ['Machine ID', CFG.deviceId],
-        ['Location', CFG.location],
-        ...(registeredExplicit !== null && registeredExplicit !== undefined ? [['Registration', registeredExplicit ? '✅ Registered' : '❌ Not registered']] : []),
-        ['Alert Email', CFG.email.to],
-        ['Daily Report','09:30 AM KSA every day'],
-        ['Monthly Report','09:00 AM KSA on 1st of each month'],
-        ['Temp Threshold',`${CFG.tempAlert}°C`],
-        ['Stock Low Alert','≤ 2 units per SKU'],
-        ['Stock OK','≥ 3 units per SKU'],
-      ].map(([l,v])=>`<div class="ar"><span class="at">${l}</span><span class="as">${v}</span></div>`).join('')}
-    </div>
-  </div>
-
-    ${(() => {
-    const todayOrders = STATE.stats.todayOrders || [];
-    const totalRev = todayOrders.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
-
-    // Build SKU summary for today
-    const skuSum = {};
-    CFG.products.forEach(p => { skuSum[p.code] = { count:0, rev:0 }; });
-    todayOrders.forEach(o => {
-      const g = o.goods?.[0] || {};
-      const p = getProductCode(g.goods_name||'');
-      if (p) {
-        skuSum[p.code].count++;
-        skuSum[p.code].rev += parseFloat(o.order_amount||0);
-      }
-    });
-
-    const todayLabel = new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', weekday:'long', day:'numeric', month:'long', year:'numeric' });
-
-    // Table 1: SKU Summary
-    const skuRows = CFG.products.map(p => {
-      const s = skuSum[p.code];
-      const has = s.count > 0;
-      return `<tr style="border-bottom:1px solid #F0E4D0">
-        <td style="padding:9px 12px;font-family:monospace;font-weight:700;color:#F5A623;font-size:11px">${p.code}</td>
-        <td style="padding:9px 12px;font-weight:${has?'700':'400'};color:${has?'#1C2E08':'#999'};font-size:12px">${p.emoji} ${p.name}</td>
-        <td style="padding:9px 12px;text-align:center"><span style="background:${has?'#1B3F8B':'#F0F0F0'};color:${has?'#fff':'#999'};padding:3px 10px;border-radius:14px;font-size:11px;font-weight:700">${s.count}</span></td>
-        <td style="padding:9px 12px;text-align:right;font-weight:${has?'900':'400'};color:${has?'#5A9E1E':'#999'};font-size:12px">${s.rev.toFixed(2)} SAR</td>
-      </tr>`;
-    }).join('');
-
-    // Table 2: All Purchases
-    const purRows = todayOrders.length === 0
-      ? `<tr><td colspan="6" style="padding:20px;text-align:center;color:#7A9660;font-size:12px">No completed orders today yet</td></tr>`
-      : todayOrders.map((o,i) => {
-          const g = o.goods?.[0] || {};
-          const prod = getProductCode(g.goods_name||'');
-          const apiS = String(g.cargoway_num || o.cargoway_num || '');
-          const slot = CFG.slotMap[apiS] || apiS || '—';
-          const ksaT = toKSATime(o.pay_time).substring(11);
-          const price = parseFloat(g.sale_price || o.order_amount || 0).toFixed(2);
-          return `<tr style="border-bottom:1px solid #F0E4D0">
-            <td style="padding:8px 10px;text-align:center;color:#7A9660;font-size:11px">${i+1}</td>
-            <td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#F5A623;font-size:10px">${prod?.code||'—'}</td>
-            <td style="padding:8px 10px;font-weight:700;color:#1C2E08;font-size:11px">${prod?.emoji||''} ${prod?.name||g.goods_name||'—'}</td>
-            <td style="padding:8px 10px;text-align:center"><span style="background:#EEF5E8;color:#5A9E1E;padding:2px 7px;border-radius:4px;font-family:monospace;font-size:10px;font-weight:700">${slot}</span></td>
-            <td style="padding:8px 10px;text-align:center;font-weight:700;color:#1B3F8B;font-size:12px">${ksaT}</td>
-            <td style="padding:8px 10px;text-align:right;font-weight:900;color:#5A9E1E;font-size:12px">${price} SAR</td>
-          </tr>`;
-        }).join('');
-
-    return `
-  <div class="sec">
-    <div class="sh" style="background:#5A9E1E">📦 Today's SKU Summary · ${todayLabel}</div>
-    <div class="sb" style="padding:0">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse">
-        <thead><tr style="background:#1B3F8B">
-          <th style="padding:10px 12px;text-align:left;color:#fff;font-size:10px;letter-spacing:1px">CODE</th>
-          <th style="padding:10px 12px;text-align:left;color:#fff;font-size:10px;letter-spacing:1px">PRODUCT</th>
-          <th style="padding:10px 12px;text-align:center;color:#fff;font-size:10px;letter-spacing:1px">QTY SOLD</th>
-          <th style="padding:10px 12px;text-align:right;color:#fff;font-size:10px;letter-spacing:1px">REVENUE</th>
-        </tr></thead>
-        <tbody>
-          ${skuRows}
-          <tr style="background:#FDF0D8">
-            <td colspan="2" style="padding:11px 12px;font-weight:900;color:#1C2E08;font-size:13px">🏆 GRAND TOTAL</td>
-            <td style="padding:11px 12px;text-align:center"><span style="background:#1B3F8B;color:#fff;padding:4px 14px;border-radius:14px;font-size:13px;font-weight:900">${todayOrders.length}</span></td>
-            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:16px">${totalRev.toFixed(2)} SAR</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-
-  <div class="sec">
-    <div class="sh" style="background:#1B3F8B">✅ Today's All Purchases (${todayOrders.length})</div>
-    <div class="sb" style="padding:0;overflow-x:auto">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;min-width:560px">
-        <thead><tr style="background:#1B3F8B">
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">#</th>
-          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">CODE</th>
-          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">PRODUCT</th>
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">SLOT</th>
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">TIME (KSA)</th>
-          <th style="padding:9px 10px;text-align:right;color:#fff;font-size:9px;letter-spacing:1px">PRICE</th>
-        </tr></thead>
-        <tbody>
-          ${purRows}
-          ${todayOrders.length > 0 ? `
-          <tr style="background:#D0DCF5">
-            <td colspan="5" style="padding:11px 12px;font-weight:900;color:#1B3F8B;font-size:12px">TOTAL · ${todayOrders.length} order${todayOrders.length!==1?'s':''}</td>
-            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:14px">${totalRev.toFixed(2)} SAR</td>
-          </tr>` : ''}
-        </tbody>
-      </table>
-    </div>
-  </div>
-`;
-  })()}
-  <div class="sec">
-    <div class="sh" style="background:#5A9E1E">📦 Current Stock (${Object.keys(STATE.stock).length} slots)</div>
-    <div class="sb">
-      ${CFG.products.map(p=>{
-        const u=p.slots.reduce((s,sl)=>s+(STATE.stock[sl]?.vol||0),0);
-        const c=p.slots.length*2;
-        const st=u===0?'EMPTY':u<=2?'LOW':'OK';
-        const sc=st==='OK'?'#5A9E1E':st==='LOW'?'#E07020':'#C8002A';
-        return `<div class="ar"><span class="at" style="font-weight:700">${p.code}</span><span style="flex:1;font-size:12px;color:#1C2E08">${p.emoji} ${p.name}</span><span class="badge" style="background:${st==='OK'?'#EEF5E8':st==='LOW'?'#FFF5EC':'#FEF0F0'};color:${sc};border:1px solid ${sc}">${u}/${c} · ${st}</span></div>`;
-      }).join('')}
-    </div>
-  </div>
-    ${(() => {
-    const monthOrders = STATE.stats.monthOrders || [];
-    const totalRev = monthOrders.reduce((s,o)=>s+parseFloat(o.order_amount||0),0);
-    const monthLabel = new Date().toLocaleDateString('en-GB', { timeZone:'Asia/Riyadh', month:'long', year:'numeric' });
-
-    // Sort newest first so the latest sales are at the top
-    const sorted = [...monthOrders].sort((a,b) => (b.pay_time||'').localeCompare(a.pay_time||''));
-
-    const purRows = sorted.length === 0
-      ? `<tr><td colspan="6" style="padding:20px;text-align:center;color:#7A9660;font-size:12px">No completed orders this month yet</td></tr>`
-      : sorted.map((o,i) => {
-          const g = o.goods?.[0] || {};
-          const prod = getProductCode(g.goods_name||'');
-          const apiS = String(g.cargoway_num || o.cargoway_num || '');
-          const slot = CFG.slotMap[apiS] || apiS || '—';
-          const ksaT = toKSATime(o.pay_time);
-          const ksaDate = ksaT.substring(0,10);
-          const ksaTime = ksaT.substring(11);
-          const price = parseFloat(g.sale_price || o.order_amount || 0).toFixed(2);
-          return `<tr style="border-bottom:1px solid #F0E4D0">
-            <td style="padding:8px 10px;text-align:center;color:#7A9660;font-size:11px">${i+1}</td>
-            <td style="padding:8px 10px;font-family:monospace;font-weight:700;color:#F5A623;font-size:10px">${prod?.code||'—'}</td>
-            <td style="padding:8px 10px;font-weight:700;color:#1C2E08;font-size:11px">${prod?.emoji||''} ${prod?.name||g.goods_name||'—'}</td>
-            <td style="padding:8px 10px;text-align:center"><span style="background:#EEF5E8;color:#5A9E1E;padding:2px 7px;border-radius:4px;font-family:monospace;font-size:10px;font-weight:700">${slot}</span></td>
-            <td style="padding:8px 10px;text-align:center;font-size:11px"><div style="color:#1B3F8B;font-weight:700">${ksaTime}</div><div style="color:#7A9660;font-size:9px">${ksaDate}</div></td>
-            <td style="padding:8px 10px;text-align:right;font-weight:900;color:#5A9E1E;font-size:12px">${price} SAR</td>
-          </tr>`;
-        }).join('');
-
-    return `
-  <div class="sec">
-    <div class="sh" style="background:#1B3F8B">📅 This Month's All Purchases · ${monthLabel} (${sorted.length})</div>
-    <div class="sb" style="padding:0;overflow-x:auto;max-height:600px;overflow-y:auto">
-      <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;min-width:560px">
-        <thead><tr style="background:#1B3F8B;position:sticky;top:0;z-index:1">
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">#</th>
-          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">CODE</th>
-          <th style="padding:9px 10px;text-align:left;color:#fff;font-size:9px;letter-spacing:1px">PRODUCT</th>
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">SLOT</th>
-          <th style="padding:9px 10px;text-align:center;color:#fff;font-size:9px;letter-spacing:1px">DATE / TIME (KSA)</th>
-          <th style="padding:9px 10px;text-align:right;color:#fff;font-size:9px;letter-spacing:1px">PRICE</th>
-        </tr></thead>
-        <tbody>
-          ${purRows}
-          ${sorted.length > 0 ? `
-          <tr style="background:#D0DCF5">
-            <td colspan="5" style="padding:11px 12px;font-weight:900;color:#1B3F8B;font-size:12px">TOTAL · ${sorted.length} order${sorted.length!==1?'s':''}</td>
-            <td style="padding:11px 12px;text-align:right;font-weight:900;color:#1B3F8B;font-size:14px">${totalRev.toFixed(2)} SAR</td>
-          </tr>` : ''}
-        </tbody>
-      </table>
-    </div>
-  </div>
-`;
-  })()}
-
-  <div class="sec">
-    <div class="sh" style="background:#F5A623">📧 Recent Alerts (${STATE.alerts.length})</div>
-    <div class="sb">
-      ${STATE.alerts.length===0
-        ? '<div style="text-align:center;color:#7A9660;padding:16px">No alerts yet · All good! ✅</div>'
-        : STATE.alerts.slice(0,20).map(a=>`
-          <div class="ar">
-            <span class="at">${new Date(a.time).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12: true })}</span>
-            <span class="as">${a.subject}</span>
-          </div>`).join('')}
-    </div>
-  </div>
-
-  ${STATE.errors.length>0?`
-  <div class="sec">
-    <div class="sh" style="background:#C8002A">⚠️ Recent Errors</div>
-    <div class="sb">
-      ${STATE.errors.slice(0,10).map(e=>`<div class="er">${new Date(e.time).toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12: true })} — ${e.msg}</div>`).join('')}
-    </div>
-  </div>`:''}
-
+  ${sec(1, 'Today', fmt(Date.now(), { weekday:'long', day:'numeric', month:'short' }), `<div class="stats">${todayNums}</div>`)}
+  ${sec(2, "Today's SKU summary", '', `<div class="scroll"><table><tr><th>Code</th><th>Product</th><th class="n">Qty sold</th><th class="n">Revenue</th></tr>${skuRows}</table></div>`)}
+  ${sec(3, "Today's purchases", String(todayOrders.length), todayBody)}
+  ${sec(4, 'Current stock', `${Object.keys(STATE.stock).length} slots`, stockBody)}
+  ${sec(5, "This month's purchases", `${fmt(Date.now(), { month:'long', year:'numeric' })} · ${sortedMonth.length}`, monthBody)}
+  ${sec(6, 'Recent alerts', String(STATE.alerts.length), alertsBody)}
+  ${sec(7, 'Monitor status', '', statusRows)}
+  ${errBody}
+  <div class="foot">${fmt(Date.now(), { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' })} KSA · Checks every 5 minutes · Machine ${CFG.deviceId}</div>
 </div>
-<footer style="background:#1B3F8B;color:rgba(255,255,255,.85);padding:18px 24px;margin-top:24px;text-align:center;font-size:12px;letter-spacing:1.5px;font-weight:700">
-  RADWA VENDING MACHINE MONITOR
-  <div style="color:rgba(255,255,255,.55);font-size:10px;font-weight:400;letter-spacing:1px;margin-top:4px;text-transform:none">
-    ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Riyadh', day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', hour12: true })} KSA · Checks every 5 minutes · Machine ${CFG.deviceId}
-  </div>
-</footer>
 </body></html>`);
 });
 
