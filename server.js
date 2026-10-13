@@ -15,12 +15,16 @@ app.use(express.json());
 // ── ACCESS CONTROL: Monitor page is public; Sales, Refill, their APIs and debug routes need the PIN ──
 const crypto = require('crypto');
 const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/api\/(sales|refills|slots|replenish)/, /^\/debug-/];
-const accessToken = () => process.env.REFILL_PIN ? crypto.createHmac('sha256', process.env.REFILL_PIN).update('radwa-access-v1').digest('hex') : null;
+const SESSION_MS = 12 * 3600 * 1000;   // a login lasts until the browser is closed, and never more than 12 hours
+const sign = exp => crypto.createHmac('sha256', process.env.REFILL_PIN || '').update('radwa-access-v2:' + exp).digest('hex');
+const accessToken = () => { const exp = Date.now() + SESSION_MS; return exp + '.' + sign(exp); };
 function isAuthed(req) {
-  const t = accessToken(); if (!t) return false;
+  if (!process.env.REFILL_PIN) return false;
   const c = (req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith('rv='));
-  const v = c ? c.slice(3) : '';
-  return v.length === t.length && crypto.timingSafeEqual(Buffer.from(v), Buffer.from(t));
+  const [exp, sig] = (c ? c.slice(3) : '').split('.');
+  if (!exp || !sig || !(+exp > Date.now())) return false;
+  const want = sign(exp);
+  return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
 }
 app.use((req, res, next) => {
   if (!LOCKED.some(r => r.test(req.path)) || isAuthed(req)) return next();
@@ -39,7 +43,7 @@ app.post('/api/unlock', (req, res) => {
   if (!crypto.timingSafeEqual(h(req.body?.pin), h(pin))) { f.n++; FAILS.set(ip, f); return res.status(401).json({ error: 'Wrong PIN' }); }
   FAILS.delete(ip);
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-  res.setHeader('Set-Cookie', `rv=${accessToken()}; Path=/; Max-Age=2592000; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
+  res.setHeader('Set-Cookie', `rv=${accessToken()}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
   res.json({ ok: true });
 });
 app.get('/lock', (req, res) => { res.setHeader('Set-Cookie', 'rv=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); res.redirect('/'); });
@@ -1379,12 +1383,6 @@ app.get('/', (req, res) => {
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 <style>
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
-.tile{display:flex;align-items:center;gap:16px;border-radius:16px;padding:20px 22px;text-decoration:none;box-shadow:0 1px 2px rgba(0,0,0,.05)}
-.tile.t1{background:#84BD00;color:#173404}.tile.t2{background:#173404;color:#84BD00}
-.ti{width:52px;height:52px;border-radius:14px;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.tx{flex:1;min-width:0}.tt{font-size:18px;font-weight:800}.td{font-size:13px;font-weight:500;margin-top:2px;opacity:.85}
-.tile>span{font-size:28px;font-weight:700}
 .kv{display:flex;gap:12px;padding:9px 0;border-bottom:.5px solid #eee;font-size:13px;align-items:center}
 .kv:last-child{border-bottom:none}
 .kv .k{color:#78716c;width:150px;flex-shrink:0;font-size:12px}
@@ -1393,7 +1391,7 @@ app.get('/', (req, res) => {
 .tag.low{color:#b45309;background:#fffbeb;border-color:#fde68a}
 .tag.empty{color:#be123c;background:#fff1f2;border-color:#fecdd3}
 .foot{text-align:center;color:#78716c;font-size:11px;padding:6px 0 24px}
-@media(max-width:640px){.kv .k{width:100px}.tile{padding:16px}}
+@media(max-width:640px){.kv .k{width:100px}}
 </style></head>
 <body>
 <div class="hdr"><div class="hdr-in">
@@ -1408,10 +1406,6 @@ app.get('/', (req, res) => {
 </div></div>
 <div class="wrap">
   <div class="stats">${statusCards}</div>
-  <div class="tiles">
-    <a class="tile t1" href="/sales"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON.sales}</svg></div><div class="tx"><div class="tt">Sales report</div><div class="td">Pick a date range, see revenue by day and product, export to Excel</div></div><span>›</span></a>
-    <a class="tile t2" href="/refill"><div class="ti"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICON.refill}</svg></div><div class="tx"><div class="tt">Refill machine</div><div class="td">Add stock slot by slot and see who refilled, when and how much</div></div><span>›</span></a>
-  </div>
   ${sec(1, 'Today', fmt(Date.now(), { weekday:'long', day:'numeric', month:'short' }), `<div class="stats">${todayNums}</div>`)}
   ${sec(2, "Today's SKU summary", '', `<div class="scroll"><table><tr><th>Code</th><th>Product</th><th class="n">Qty sold</th><th class="n">Revenue</th></tr>${skuRows}</table></div>`)}
   ${sec(3, "Today's purchases", String(todayOrders.length), todayBody)}
