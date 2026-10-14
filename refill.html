@@ -6,24 +6,26 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 <style>
-.rowb{margin-bottom:14px}
-.rowh{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-.rowh .rn{background:#173404;color:#84BD00;font-weight:800;font-size:12px;border-radius:8px;padding:4px 9px;white-space:nowrap}
-.rowh .mn{font-size:14px;font-weight:700;color:#1c1917;flex:1;min-width:140px}
-.rowh .mn small{display:block;font-size:11px;font-weight:500;color:#78716c}
-.rowh .rt{font-size:12px;color:#57534e;font-weight:600;white-space:nowrap}
-.rowh .f{font-family:inherit;font-size:12px;font-weight:700;border:1px solid #84BD00;background:#fff;color:#4d7000;border-radius:8px;padding:6px 10px;cursor:pointer;white-space:nowrap}
-.sg{display:grid;gap:6px}
-.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:8px 6px;background:#fafaf9;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+.mx{width:100%;border-collapse:separate;border-spacing:6px}
+.mx{table-layout:fixed}.mx th{background:none;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;text-align:center;padding:2px 0;border:0}
+.mx td{border:0;padding:0;vertical-align:top}.mx tr:hover td{background:none}
+.mx th.r,.mx td.r{width:64px;text-align:left}
+.mx .rn{background:#173404;color:#84BD00;font-weight:800;font-size:12px;border-radius:8px;padding:4px 9px;white-space:nowrap;display:inline-block}
+.mx .rc{font-size:11px;color:#57534e;font-weight:600;margin-top:4px}
+.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:7px 6px 6px;background:#fafaf9;text-align:center;min-width:0}
+.sl.full{border-color:#bbf7d0;background:#f0fdf4}.sl.empty{border-color:#fecdd3;background:#fff1f2}
 .sl.chg{border-color:#84BD00;background:#f1f9dc}
-.sl .lb{font-size:11px;font-weight:700;color:#57534e}
-.sl .qq{font-size:20px;font-weight:800;color:#1c1917;line-height:1;font-variant-numeric:tabular-nums}
-.sl .qq i{font-style:normal;font-size:12px;font-weight:600;color:#78716c}
-.sl .dd{font-size:11px;font-weight:700;height:14px;color:#4d7000}
-.sl .dd.n{color:#be123c}
-.sl .bt{display:flex;gap:4px;width:100%}
-.sl .bt button{flex:1;height:42px;min-width:0;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;touch-action:manipulation}
-.sl .bt button:active{background:#e8f3cc}
+.sl .mn{font-size:12px;font-weight:700;color:#292524;line-height:1.2;min-height:15px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sl .lb{font-size:10px;font-weight:700;color:#78716c;margin-bottom:4px}
+.sl .ct{display:flex;align-items:center;justify-content:center;gap:6px}
+.sl .qq{font-size:20px;font-weight:800;color:#1c1917;line-height:1;min-width:34px;font-variant-numeric:tabular-nums}
+.sl .qq i{font-style:normal;font-size:11px;font-weight:600;color:#78716c}
+.sl .dd{font-size:11px;font-weight:700;height:13px;color:#4d7000}.sl .dd.n{color:#be123c}
+.sl button{width:38px;height:40px;flex:none;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;touch-action:manipulation;padding:0}
+.sl button:active{background:#e8f3cc}
+.sl button:disabled{opacity:.35;cursor:not-allowed}
+.sl.off{background:repeating-linear-gradient(135deg,#f5f5f4,#f5f5f4 7px,#ebe9e7 7px,#ebe9e7 14px);border:1px dashed #c4c0bb;color:#a8a29e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:78px}
+.sl.off .lb{margin:0;color:#a8a29e}.sl.off .na{font-size:11px;font-weight:700;color:#78716c}
 .bar2{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 2px;margin-top:6px;background:#fff;border-top:1px solid #f1f5f9}
 .bar2 .sm{font-size:13px;font-weight:700;flex:1;min-width:120px}
 .bar2 .btn{height:44px}
@@ -31,6 +33,10 @@
 .note.ok{background:#ecfdf5;color:#047857}.note.bad{background:#fff1f2;color:#be123c}
 @media(max-width:640px){
   .card{padding:14px}
+  .mx{border-spacing:3px}.mx th.r,.mx td.r{width:44px}
+  .sl{padding:6px 3px 5px}.sl .mn{font-size:10.5px;white-space:normal;min-height:26px}
+  .sl .ct{flex-wrap:wrap;gap:4px}.sl .qq{order:-1;width:100%;font-size:19px}.sl button{flex:1;width:auto;height:38px;font-size:18px}
+  .mx th{font-size:9px;letter-spacing:0}
   .bar2 .btn{flex:1}
   .bar2 .sm{flex-basis:100%}
 }
@@ -114,25 +120,34 @@
   var slots = [], draft = {}, busy = false, msg = '';
   function tok(){ return 'r' + Date.now() + Math.random().toString(36).slice(2); }
   function get(id){ return slots.filter(function(s){return s.id===id;})[0]; }
-  function clamp(s, v){ return Math.max(-s.amount, Math.min(s.free, v)); }
+  function clamp(s, v){ if (!s.active) return 0; return Math.max(-s.amount, Math.min(s.free, v)); }
   function total(){ var n=0,u=0; Object.keys(draft).forEach(function(k){ if(draft[k]){n++;u+=draft[k];} }); return [n,u]; }
   function draw(){
-    var rows = {}; slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); });
-    var cap=0, cur=0; slots.forEach(function(s){ cap+=s.vol; cur+=s.amount; });
+    var rows = {}, maxc = 0; slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); if (s.col > maxc) maxc = s.col; });
+    var cap=0, cur=0; slots.forEach(function(s){ if (s.active){ cap+=s.vol; cur+=s.amount; } });
     var h = '<div class="card"><div class="sec-h"><div class="sec-n">+</div><span class="sec-t">Refill machine</span><span class="badge">'+cur+' / '+cap+' units in machine</span></div>';
     if (!slots.length) h += '<div class="msg">Loading slots…</div>';
-    Object.keys(rows).forEach(function(r){
-      var list = rows[r], f = list[0], rc=0, rv=0, rf=0;
-      list.forEach(function(s){ rc+=s.vol; rv+=s.amount; rf+=s.free; });
-      h += '<div class="rowb"><div class="rowh"><span class="rn">Row '+esc(r)+'</span><div class="mn">'+esc(f.name)+'<small>'+esc(f.sku)+' · Frozen Ready Meal</small></div><span class="rt">'+rv+' / '+rc+'</span>'+
-        '<button class="f" data-a="row" data-r="'+esc(r)+'"'+(rf?'':' disabled')+'>Fill row (+'+rf+')</button></div>'+
-        '<div class="sg" style="grid-template-columns:repeat('+Math.min(list.length,6)+',minmax(0,1fr))">' + list.map(function(s){
-          var d = draft[s.id] || 0;
-          return '<div class="sl'+(d?' chg':'')+'"><div class="lb">'+esc(s.label)+'</div><div class="qq">'+(s.amount+d)+'<i>/'+s.vol+'</i></div>'+
-            '<div class="dd'+(d<0?' n':'')+'">'+(d?(d>0?'+':'')+d:'')+'</div>'+
-            '<div class="bt"><button data-a="m" data-id="'+s.id+'" aria-label="minus">−</button><button data-a="p" data-id="'+s.id+'" aria-label="plus">+</button></div></div>';
-        }).join('') + '</div></div>';
-    });
+    else {
+      h += '<div class="scroll"><table class="mx"><tr><th class="r">Row</th>';
+      for (var c=1; c<=maxc; c++) h += '<th>Slot '+c+'</th>';
+      h += '</tr>';
+      Object.keys(rows).forEach(function(r){
+        var list = rows[r], rc=0, rv=0;
+        list.forEach(function(s){ if (s.active){ rc+=s.vol; rv+=s.amount; } });
+        h += '<tr><td class="r"><span class="rn">'+esc(r)+'</span><div class="rc">'+(rc?rv+' / '+rc:'')+'</div></td>';
+        for (var c=1; c<=maxc; c++){
+          var s = list.filter(function(x){ return x.col===c; })[0];
+          if (!s){ h += '<td></td>'; continue; }
+          if (!s.active){ h += '<td><div class="sl off"><div class="lb">'+esc(s.label)+'</div><div class="na">🔒 Not active</div></div></td>'; continue; }
+          var d = draft[s.id] || 0, q = s.amount + d;
+          h += '<td><div class="sl '+(d?'chg':q<=0?'empty':q>=s.vol?'full':'')+'"><div class="mn" title="'+esc(s.name)+'">'+esc(s.short)+'</div><div class="lb">'+esc(s.label)+'</div>'+
+            '<div class="ct"><button data-a="m" data-id="'+s.id+'" aria-label="minus">−</button><div class="qq">'+q+'<i>/'+s.vol+'</i></div><button data-a="p" data-id="'+s.id+'" aria-label="plus">+</button></div>'+
+            '<div class="dd'+(d<0?' n':'')+'">'+(d?(d>0?'+':'')+d:'')+'</div></div></td>';
+        }
+        h += '</tr>';
+      });
+      h += '</table></div>';
+    }
     var t = total();
     h += '<div class="bar2"><span class="sm">'+(t[0]?t[0]+' slot'+(t[0]>1?'s':'')+' · '+(t[1]>0?'+':'')+t[1]+' units':'Tap + on a slot to add stock')+'</span>'+
       '<button class="btn" data-a="all">Fill all</button><button class="btn" data-a="clr"'+(t[0]?'':' disabled')+'>Clear</button>'+
@@ -145,8 +160,7 @@
     var a = b.dataset.a, s = b.dataset.id && get(b.dataset.id);
     if (a==='m') draft[s.id] = clamp(s, (draft[s.id]||0)-1);
     else if (a==='p') draft[s.id] = clamp(s, (draft[s.id]||0)+1);
-    else if (a==='row') slots.forEach(function(x){ if (String(x.row)===b.dataset.r) draft[x.id] = x.free; });
-    else if (a==='all') slots.forEach(function(x){ draft[x.id] = x.free; });
+    else if (a==='all') slots.forEach(function(x){ if (x.active && x.free) draft[x.id] = x.free; });
     else if (a==='clr') { draft = {}; msg = ''; }
     else if (a==='go') return apply();
     msg = ''; draw();

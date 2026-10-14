@@ -89,6 +89,12 @@ const CFG = {
     { code:'EFMC06', name:'Creamy Chicken 350gms',             emoji:'🍲', slots:['51','52','53','54','61','62'],rows:[6,7] },
   ],
 
+  // Slots the salesman may NOT refill (row-col). Override with Render env INACTIVE_SLOTS="6-1,6-4,..." (empty value = none).
+  inactiveSlots: (process.env.INACTIVE_SLOTS !== undefined ? process.env.INACTIVE_SLOTS : '6-1,6-4,7-3,7-4,8-1,8-2,8-3,8-4')
+    .split(/[\s,;]+/).map(x => x.trim()).filter(Boolean),
+  // Shorter names shown on the Refill page only
+  shortNames: { 'Fettuccine Chicken Alfredo': 'Fettuccine Chicken' },
+
   // Layout map: API slot number → row-col code
   slotMap: {
     '1':'1-1','2':'1-2','3':'1-3','4':'1-4',
@@ -1699,9 +1705,11 @@ async function getSlots() {
       const rowN = parseInt(c.row_num, 10) || +row;
       const prod = getProductCode(name) || CFG.products.find(p => (p.rows || []).includes(rowN)) || null;
       const vol = parseInt(c.cargoway_vol, 10) || 0, amount = parseInt(c.goods_amount, 10) || 0;
+      const label = `${c.row_num}-${c.col_num}`, full = prod?.name || name;
+      const short0 = full.replace(/\s*\d+\s*gms?$/i, '').trim();
       out.push({
         id: String(c.cargoway_id), num: String(c.cargoway_num), row: parseInt(c.row_num, 10) || +row, col: parseInt(c.col_num, 10) || 0,
-        label: `${c.row_num}-${c.col_num}`, name: prod?.name || name, apiName: name, sku: prod?.code || '', img: c.goods?.goods_img || '',
+        label, active: !CFG.inactiveSlots.includes(label), short: CFG.shortNames[short0] || short0, name: full, apiName: name, sku: prod?.code || '', img: c.goods?.goods_img || '',
         vol, amount, free: Math.max(0, vol - amount),
         merged: String(c.merge_type) !== '0' || String(c.merge_cargoway_id) !== '0',
         disabled: String(c.cargoway_status) !== '0',
@@ -1735,6 +1743,7 @@ app.post('/api/replenish', async (req, res) => {
       if (seen.has(s.id)) return res.status(400).json({ error: `Slot ${s.label} listed twice` });
       seen.add(s.id);
       if (!Number.isInteger(delta) || delta === 0) continue;
+      if (!s.active) return res.status(403).json({ error: `Slot ${s.label} is not active and cannot be refilled` });
       const after = s.amount + delta;
       if (after < 0 || after > s.vol) return res.status(400).json({ error: `Slot ${s.label}: ${s.amount} ${delta > 0 ? '+' : ''}${delta} is outside 0–${s.vol}` });
       plan.push({ s, delta, after });
