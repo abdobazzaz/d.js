@@ -14,7 +14,7 @@ app.use(express.json());
 
 // ── ACCESS CONTROL: Monitor page is public; Sales, Refill, their APIs and debug routes need the PIN ──
 const crypto = require('crypto');
-const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/api\/(sales|refills|slots|replenish)/, /^\/debug-/];
+const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/session(\/|$)/, /^\/api\/(sales|refills|slots|replenish|session)/, /^\/debug-/];
 const SESSION_MS = 12 * 3600 * 1000;   // a login lasts until the browser is closed, and never more than 12 hours
 const sign = exp => crypto.createHmac('sha256', process.env.REFILL_PIN || '').update('radwa-access-v2:' + exp).digest('hex');
 const accessToken = () => { const exp = Date.now() + SESSION_MS; return exp + '.' + sign(exp); };
@@ -106,6 +106,10 @@ const CFG = {
 let STATE = {
   token:          '',
   cookie:         '',
+  manual:         { token: process.env.DW_TOKEN || '', cookie: process.env.DW_COOKIE || '' }, // session pasted after a manual (captcha) login
+  authIssue:      '',   // set while the machine-cloud login is not working
+  authNotified:   0,
+  lastGood:       null, // last time a full data fetch succeeded
   lastPower:      null,
   lastRegistered: null, // registration state for alert transitions
   lastTempAlert:  false,
@@ -188,14 +192,22 @@ async function apiFetch(path, opts = {}) {
 
   const res = await fetch(CFG.api + path, { ...opts, headers, timeout: 30000 });
   const sc = res.headers.get('set-cookie');
-  if (sc) STATE.cookie = sc;
+  if (sc && !STATE.manual.cookie) STATE.cookie = sc;
+  if (res.status === 401 || res.status === 403) throw new Error(`${res.status} not authorised for ${path}`);
 
   const text = await res.text();
-  try { return JSON.parse(text); }
+  let j;
+  try { j = JSON.parse(text); }
   catch(e) { throw new Error(`Non-JSON from ${path}: ${text.substring(0,100)}`); }
+  if (j && (j.code === 401 || j.code === 403)) throw new Error(`${j.code} not authorised for ${path}`);
+  return j;
 }
 
 async function login() {
+  if (STATE.manual.token || STATE.manual.cookie) {
+    STATE.token = STATE.manual.token; STATE.cookie = STATE.manual.cookie;
+    return true;
+  }
   try {
     const params = new URLSearchParams();
     params.append('country_code', '971');
@@ -867,6 +879,11 @@ async function sendDailyReport(targetDate) {
 
     STATE.machine = machine;
     STATE.stock   = stock;
+    STATE.lastGood = new Date().toISOString();
+    if (STATE.authIssue) {
+      STATE.authIssue = '';
+      await sendEmail('🟢 Dashboard is connected to the machine cloud again', alertEmail('🟢', 'Machine cloud connection restored', ['The dashboard can read data from the DW Vending platform again.'])).catch(() => {});
+    }
 
     // Filter orders for the day
     const dayOrders = allOrders.filter(o => {
@@ -1026,6 +1043,20 @@ async function sendMonthlyReport() {
   }
 }
 
+// ── LOGIN HEALTH ──────────────────────────────────────────────────────────
+async function markAuth(reason) {
+  STATE.authIssue = reason;
+  logError('Machine cloud login problem: ' + reason);
+  if (Date.now() - STATE.authNotified > 12 * 3600000) {
+    STATE.authNotified = Date.now();
+    await sendEmail('🔑 Alert: dashboard lost its machine-cloud login', alertEmail('🔑', 'Alert: machine cloud login needs attention', [
+      'The dashboard can no longer read data from the DW Vending platform, so the machine status, sales and refill pages are <strong>not updating</strong>.',
+      `Reason: <strong>${reason}</strong>`,
+      'Fix: log in to merchant.dwvending.cn in your browser, then paste the new session at <strong>https://d-js.onrender.com/session</strong> (PIN needed).',
+    ])).catch(() => {});
+  }
+}
+
 // ── MAIN CHECK (every 5 min) ──────────────────────────────────────────────
 async function doCheck() {
   STATE.lastCheck = new Date().toISOString();
@@ -1035,7 +1066,7 @@ async function doCheck() {
     // Login if needed
     if (!STATE.token) {
       const ok = await login();
-      if (!ok) { logError('Login failed'); return; }
+      if (!ok) { await markAuth('Automatic login was rejected by the platform (it now asks for a captcha code).'); return; }
     }
 
     // Fetch all data
@@ -1260,7 +1291,11 @@ async function doCheck() {
     }
   } catch(e) {
     logError(`Check failed: ${e.message}`);
-    if (e.message.includes('401') || e.message.includes('403')) STATE.token = '';
+    if (e.message.includes('401') || e.message.includes('403')) {
+      STATE.token = '';
+      if (!STATE.manual.cookie) STATE.cookie = '';
+      await markAuth(STATE.manual.token || STATE.manual.cookie ? 'The pasted session was rejected or has expired.' : 'The platform rejected the saved login.');
+    }
   }
 }
 
@@ -1292,7 +1327,15 @@ app.get('/', (req, res) => {
   const restock    = pct < 20;
   const uCls       = totalUnits === 0 || restock ? 'bad' : totalUnits < totalCap*0.3 ? 'warn' : 'good';
   const lastCheckTxt = STATE.lastCheck ? fmt(STATE.lastCheck, { hour:'2-digit', minute:'2-digit' }) : 'starting…';
-  const statusCards = [
+  const authIssue = STATE.authIssue;
+  const lastGoodTxt = STATE.lastGood ? fmtShort(STATE.lastGood) : 'never since restart';
+  const authBanner = authIssue ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:12px;padding:14px 16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:220px"><div style="font-weight:700;color:#b45309;font-size:14px">Not connected to the machine cloud</div><div style="font-size:12px;color:#57534e;margin-top:3px">${esc(authIssue)} The numbers below are the last known ones (last good data: ${lastGoodTxt}).</div></div><a class="btn green" style="display:inline-flex;align-items:center;text-decoration:none" href="/session">Reconnect</a></div>` : '';
+  const statusCards = authIssue ? [
+    stat('Power status', 'Unknown', 'Cloud login lost, not updating', 'warn'),
+    stat('Connection', 'Unknown', `Last good data ${lastGoodTxt}`, 'warn'),
+    stat('Temperature', `${temp}°C`, 'Last known', 'info'),
+    stat('Units in machine', `${totalUnits} / ${totalCap}`, `Last known · ${pct}% full`, uCls),
+  ].join('') : [
     stat('Power status', powered ? 'POWERED ON' : 'POWERED OFF',
       signalMins == null ? 'No signal data' : powered ? `Last signal ${signalMins} min ago` : `No signal for ${signalMins} min`, powered ? 'good' : 'bad'),
     stat('Connection', online ? 'Connected' : 'Not connected', `Last connection ${lastTxt}`, online ? 'good' : 'bad',
@@ -1405,6 +1448,7 @@ app.get('/', (req, res) => {
   <div class="pills">${pill('monitor','/','Monitor')}${pill('sales','/sales','Sales')}${pill('refill','/refill','Refill')}</div>
 </div></div>
 <div class="wrap">
+  ${authBanner}
   <div class="stats">${statusCards}</div>
   ${sec(1, 'Today', fmt(Date.now(), { weekday:'long', day:'numeric', month:'short' }), `<div class="stats">${todayNums}</div>`)}
   ${sec(2, "Today's SKU summary", '', `<div class="scroll"><table><tr><th>Code</th><th>Product</th><th class="n">Qty sold</th><th class="n">Revenue</th></tr>${skuRows}</table></div>`)}
@@ -1714,6 +1758,27 @@ app.post('/api/replenish', async (req, res) => {
     res.status(out.ok ? 200 : 502).json(out);
   } catch (e) { res.status(500).json({ error: e.message }); }
   finally { REFILL_BUSY = false; }
+});
+
+// ── RECONNECT: paste a session obtained by a manual (captcha) login ───────
+app.get('/session', (req, res) => res.sendFile(path.join(__dirname, 'session.html')));
+app.get('/api/session', (req, res) => res.json({ issue: STATE.authIssue, lastGood: STATE.lastGood, hasPasted: !!(STATE.manual.token || STATE.manual.cookie) }));
+app.post('/api/session', async (req, res) => {
+  const clean = (v, strip) => { let x = String(v || '').trim(); if (strip) x = x.replace(/^Bearer\s+/i, ''); return /[\r\n]/.test(x) || x.length > 4000 ? null : x; };
+  const token = clean(req.body?.token, true), cookie = clean(req.body?.cookie, false);
+  if (token === null || cookie === null) return res.status(400).json({ error: 'Invalid value (keep each one on a single line)' });
+  if (!token && !cookie) return res.status(400).json({ error: 'Paste a token or a cookie' });
+  const prev = { manual: STATE.manual, token: STATE.token, cookie: STATE.cookie };
+  STATE.manual = { token, cookie }; STATE.token = token; STATE.cookie = cookie;
+  try {
+    const r = await apiFetch('/api/v1/devices?page=1&limit=1');
+    if (r?.code !== 200) throw new Error(r?.msg || `code ${r?.code}`);
+  } catch (e) {
+    STATE.manual = prev.manual; STATE.token = prev.token; STATE.cookie = prev.cookie;
+    return res.status(400).json({ error: 'The platform did not accept it: ' + e.message });
+  }
+  res.json({ ok: true });
+  doCheck().catch(() => {});
 });
 
 app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Reconnect</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
+<style>
+ol.st{margin:0 0 4px 18px;font-size:13px;line-height:1.7;color:#44403c}
+ol.st b{color:#1c1917}
+code{background:#f5f5f4;border:1px solid #e7e5e4;border-radius:4px;padding:1px 5px;font-size:12px}
+label.lb{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;margin-top:14px}
+textarea{margin-top:4px;width:100%;min-height:74px;border:1.5px solid #e7e5e4;border-radius:11px;padding:10px 12px;font-family:inherit;font-size:13px;resize:vertical}
+textarea:focus{outline:none;border-color:#84BD00}
+.hint{font-size:12px;color:#78716c;margin-top:4px}
+.res{font-size:13px;font-weight:600;border-radius:8px;padding:10px 12px;margin-top:12px}
+.res.ok{background:#ecfdf5;color:#047857}.res.bad{background:#fff1f2;color:#be123c}
+</style></head>
+<body>
+<div id="hdr"></div>
+<div class="wrap" style="max-width:760px">
+  <div class="card" id="state"><div class="msg">Checking…</div></div>
+  <div class="card">
+    <div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Log in on the platform</span></div>
+    <ol class="st">
+      <li>Open <b>merchant.dwvending.cn</b> in Chrome and log in with the captcha code.</li>
+      <li>Press <b>F12</b>, open the <b>Network</b> tab, filter <b>Fetch/XHR</b>, then reload the page.</li>
+      <li>Click any request such as <code>devices?page=1&amp;limit=10</code> and open <b>Headers → Request Headers</b>.</li>
+      <li>Copy the value after <code>Authorization: Bearer</code> (the token) and/or the whole <code>Cookie</code> value.</li>
+    </ol>
+  </div>
+  <div class="card">
+    <div class="sec-h"><div class="sec-n">2</div><span class="sec-t">Paste it here</span></div>
+    <label class="lb" for="tok">Token (Authorization)</label>
+    <textarea id="tok" placeholder="Paste the token, if the request has an Authorization header" autocomplete="off" spellcheck="false"></textarea>
+    <label class="lb" for="ck">Cookie</label>
+    <textarea id="ck" placeholder="Paste the Cookie value, if the request has one" autocomplete="off" spellcheck="false"></textarea>
+    <div class="hint">One of the two is enough. The values are sent to your dashboard only and are never shown again. Do not share them with anyone.</div>
+    <button class="btn green" id="go" style="margin-top:14px">Connect</button>
+    <div id="out"></div>
+  </div>
+</div>
+<script src="/ui.js"></script>
+<script>
+(function(){
+  var $ = function(i){ return document.getElementById(i); };
+  RUI.header('monitor', { sub: 'Reconnect to the machine cloud' });
+  function status(){
+    RUI.getJSON('/api/session').then(function(d){
+      var when = d.lastGood ? new Date(d.lastGood).toLocaleString('en-GB',{timeZone:'Asia/Riyadh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:true}) : 'not since the last restart';
+      $('state').innerHTML = d.issue
+        ? '<div class="stat warn"><div class="l">Status</div><div class="v">Not connected</div><div class="s">'+RUI.esc(d.issue)+' Last good data: '+when+'.</div></div>'
+        : '<div class="stat good"><div class="l">Status</div><div class="v">Connected</div><div class="s">Last good data: '+when+'.</div></div>';
+    }).catch(function(e){ $('state').innerHTML = '<div class="msg err">'+RUI.esc(e.message)+'</div>'; });
+  }
+  $('go').onclick = function(){
+    var b = $('go'); b.disabled = true; $('out').innerHTML = '';
+    fetch('/api/session', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: $('tok').value, cookie: $('ck').value }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) { $('tok').value = ''; $('ck').value = ''; $('out').innerHTML = '<div class="res ok">Connected. The dashboard is refreshing its data now. <a href="/">Open Monitor</a></div>'; setTimeout(status, 6000); }
+        else $('out').innerHTML = '<div class="res bad">'+RUI.esc(d.error || 'Failed')+'</div>';
+      })
+      .catch(function(e){ $('out').innerHTML = '<div class="res bad">'+RUI.esc(e.message)+'</div>'; })
+      .then(function(){ b.disabled = false; });
+  };
+  status();
+})();
+</script>
+</body></html>
