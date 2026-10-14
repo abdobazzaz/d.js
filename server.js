@@ -12,24 +12,32 @@ const path       = require('path');
 const app = express();
 app.use(express.json());
 
-// ── ACCESS CONTROL: Monitor page is public; Sales, Refill, their APIs and debug routes need the PIN ──
+// ── ACCESS CONTROL ──
+// Public: Monitor and Planogram (read only). Salesman PIN (REFILL_PIN): Refill, Sales History.
+// Admin PIN (ADMIN_PIN): Invoicing, reconnect page, slot corrections. The admin PIN also opens everything else.
+// If ADMIN_PIN is not set, REFILL_PIN acts as the admin PIN too (nothing breaks until you set it).
 const crypto = require('crypto');
-const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/cycles(\/|$)/, /^\/session(\/|$)/, /^\/api\/(sales|refills|slots|replenish|session|cycles)/, /^\/debug-/];
+const LOCK_ADMIN = [/^\/invoicing(\/|$)/, /^\/session(\/|$)/, /^\/api\/(settlements|admin|session)/, /^\/debug-/];
+const LOCK_SALES = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/cycles(\/|$)/, /^\/api\/(sales|refills|refill|slots|replenish|cycles)/];
 const SESSION_MS = 12 * 3600 * 1000;   // a login lasts until the browser is closed, and never more than 12 hours
-const sign = exp => crypto.createHmac('sha256', process.env.REFILL_PIN || '').update('radwa-access-v2:' + exp).digest('hex');
-const accessToken = () => { const exp = Date.now() + SESSION_MS; return exp + '.' + sign(exp); };
-function isAuthed(req) {
-  if (!process.env.REFILL_PIN) return false;
+const sign = (exp, role) => crypto.createHmac('sha256', (process.env.REFILL_PIN || '') + '|' + (process.env.ADMIN_PIN || '')).update('radwa-access-v3:' + exp + ':' + role).digest('hex');
+const accessToken = role => { const exp = Date.now() + SESSION_MS; return exp + '.' + role + '.' + sign(exp, role); };
+function roleOf(req) {   // 'a' (admin), 's' (salesman) or ''
+  if (!process.env.REFILL_PIN) return '';
   const c = (req.headers.cookie || '').split(/;\s*/).find(x => x.startsWith('rv='));
-  const [exp, sig] = (c ? c.slice(3) : '').split('.');
-  if (!exp || !sig || !(+exp > Date.now())) return false;
-  const want = sign(exp);
-  return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want));
+  const [exp, role, sig] = (c ? c.slice(3) : '').split('.');
+  if (!exp || !sig || !(+exp > Date.now()) || (role !== 'a' && role !== 's')) return '';
+  const want = sign(exp, role);
+  return sig.length === want.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(want)) ? role : '';
 }
+const roleName = req => ({ a: 'admin', s: 'salesman' }[roleOf(req)] || 'unknown');
 app.use((req, res, next) => {
-  if (!LOCKED.some(r => r.test(req.path)) || isAuthed(req)) return next();
-  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Locked: open /unlock and enter the PIN' });
-  res.redirect('/unlock?next=' + encodeURIComponent(req.path));
+  const needAdmin = LOCK_ADMIN.some(r => r.test(req.path)), needSales = LOCK_SALES.some(r => r.test(req.path));
+  if (!needAdmin && !needSales) return next();
+  const role = roleOf(req);
+  if (role === 'a' || (role === 's' && !needAdmin)) return next();
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: role === 's' ? 'Admin PIN needed' : 'Locked: open /unlock and enter the PIN' });
+  res.redirect('/unlock?next=' + encodeURIComponent(req.path) + (needAdmin ? '&need=admin' : ''));
 });
 const FAILS = new Map();
 app.post('/api/unlock', (req, res) => {
@@ -37,15 +45,20 @@ app.post('/api/unlock', (req, res) => {
   const f = FAILS.get(ip) || { n: 0, t: Date.now() };
   if (Date.now() - f.t > 15 * 60000) { f.n = 0; f.t = Date.now(); }
   if (f.n >= 5) return res.status(429).json({ error: 'Too many attempts, try again in 15 minutes' });
-  const pin = process.env.REFILL_PIN;
+  const pin = process.env.REFILL_PIN, adminPin = process.env.ADMIN_PIN || '';
   if (!pin) return res.status(403).json({ error: 'No PIN is set on the server (REFILL_PIN)' });
   const h = x => crypto.createHash('sha256').update(String(x || '')).digest();
-  if (!crypto.timingSafeEqual(h(req.body?.pin), h(pin))) { f.n++; FAILS.set(ip, f); return res.status(401).json({ error: 'Wrong PIN' }); }
+  const eq = (a, b) => crypto.timingSafeEqual(h(a), h(b));
+  let role = '';
+  if (adminPin && eq(req.body?.pin, adminPin)) role = 'a';
+  else if (eq(req.body?.pin, pin)) role = adminPin ? 's' : 'a';
+  if (!role) { f.n++; FAILS.set(ip, f); return res.status(401).json({ error: 'Wrong PIN' }); }
   FAILS.delete(ip);
   const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-  res.setHeader('Set-Cookie', `rv=${accessToken()}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
-  res.json({ ok: true });
+  res.setHeader('Set-Cookie', `rv=${accessToken(role)}; Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`);
+  res.json({ ok: true, role: role === 'a' ? 'admin' : 'sales' });
 });
+app.get('/api/whoami', (req, res) => { const r = roleOf(req); res.json({ role: r === 'a' ? 'admin' : r === 's' ? 'sales' : null }); });
 app.get('/lock', (req, res) => { res.setHeader('Set-Cookie', 'rv=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'); res.redirect('/'); });
 app.get('/unlock', (req, res) => res.sendFile(path.join(__dirname, 'unlock.html')));
 
@@ -1452,7 +1465,7 @@ app.get('/', (req, res) => {
       <button type="button" class="btn" onclick="location.reload()">Refresh</button>
     </div>
   </div>
-  <div class="pills">${pill('monitor','/','Monitor')}${pill('sales','/sales','Sales')}${pill('refill','/refill','Refill')}${pill('cycles','/cycles','Cycles')}</div>
+  <div class="pills">${pill('monitor','/','Monitor')}${pill('planogram','/planogram','Planogram')}${pill('refill','/refill','Refill')}${pill('invoicing','/invoicing','Invoicing')}${pill('sales','/sales','Sales History')}</div>
 </div></div>
 <div class="wrap">
   ${authBanner}
@@ -1719,55 +1732,79 @@ async function getSlots() {
   return out.sort((a, b) => a.row - b.row || a.col - b.col);
 }
 
-app.get('/api/slots', async (req, res) => {
-  try { res.json({ slots: await getSlots(), writeEnabled: true }); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+// One machine write at a time (refills and admin corrections share this)
+let MACHINE_BUSY = false;
+async function machineLock(fn) {
+  if (MACHINE_BUSY) { const e = new Error('Another refill is in progress, try again in a moment'); e.code = 409; throw e; }
+  MACHINE_BUSY = true;
+  try { return await fn(); } finally { MACHINE_BUSY = false; }
+}
+// plan: [{ s: slot, delta, after }]. Sends them one by one and stops at the first failure.
+async function applyToMachine(plan) {
+  const results = [];
+  for (const p of plan) {
+    try {
+      const r = await apiFetch(`/api/v1//cargoways/${p.s.id}/replenish`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'goods_amount=' + encodeURIComponent((p.delta > 0 ? '+' : '') + p.delta),
+      });
+      const ok = r?.code === 200;
+      results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, after: p.after, ok, msg: ok ? '' : (r?.msg || `code ${r?.code}`) });
+      if (!ok) break;
+    } catch (e) { results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, ok: false, msg: e.message }); break; }
+  }
+  REFILL_CACHE.t = 0; PLANO.t = 0;
+  return results;
+}
+
+// ── PLANOGRAM (public, read only) ─────────────────────────────────────────
+const PLANO = { t: 0, data: null };
+app.get('/api/planogram', async (req, res) => {
+  try {
+    if (!PLANO.data || Date.now() - PLANO.t > 20000) {
+      const slots = (await getSlots()).map(s => ({ label: s.label, row: s.row, col: s.col, short: s.short, sku: s.sku, amount: s.amount, vol: s.vol, active: s.active }));
+      PLANO.data = { slots, at: new Date().toISOString() }; PLANO.t = Date.now();
+    }
+    res.json(PLANO.data);
+  } catch (e) { res.status(502).json({ error: e.message }); }
 });
 
-const REFILL_DONE = new Map();   // request token -> result (stops double submits)
-let REFILL_BUSY = false;
-app.post('/api/replenish', async (req, res) => {
-  const token = String(req.body?.token || '');
-  if (token && REFILL_DONE.has(token)) return res.json({ ...REFILL_DONE.get(token), duplicate: true });
-  if (REFILL_BUSY) return res.status(409).json({ error: 'Another refill is in progress' });
-  REFILL_BUSY = true;
+// ── ADMIN: free correction of any slot (miscount, damaged unit...). Always needs a reason and is logged. ──
+app.get('/api/admin/slots', async (req, res) => {
+  try { res.json({ slots: await getSlots() }); } catch (e) { res.status(502).json({ error: e.message }); }
+});
+app.post('/api/admin/correction', async (req, res) => {
+  const note = String(req.body?.note || '').trim().slice(0, 300);
+  if (!note) return res.status(400).json({ error: 'Write the reason for the correction' });
+  const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+  if (!changes.length || changes.length > 64) return res.status(400).json({ error: 'No changes' });
   try {
-    const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
-    if (!changes.length || changes.length > 100) return res.status(400).json({ error: 'No changes' });
-    const slots = await getSlots();
-    const byId = new Map(slots.map(s => [s.id, s]));
-    const plan = [], seen = new Set();
-    for (const c of changes) {
-      const s = byId.get(String(c.id)), delta = parseInt(c.delta, 10);
-      if (!s) return res.status(400).json({ error: `Unknown slot ${c.id}` });
-      if (seen.has(s.id)) return res.status(400).json({ error: `Slot ${s.label} listed twice` });
-      seen.add(s.id);
-      if (!Number.isInteger(delta) || delta === 0) continue;
-      if (!s.active) return res.status(403).json({ error: `Slot ${s.label} is not active and cannot be refilled` });
-      const after = s.amount + delta;
-      if (after < 0 || after > s.vol) return res.status(400).json({ error: `Slot ${s.label}: ${s.amount} ${delta > 0 ? '+' : ''}${delta} is outside 0–${s.vol}` });
-      plan.push({ s, delta, after });
-    }
-    if (!plan.length) return res.status(400).json({ error: 'Nothing to change' });
-    const results = [];
-    for (const p of plan) {
-      try {
-        const r = await apiFetch(`/api/v1//cargoways/${p.s.id}/replenish`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'goods_amount=' + encodeURIComponent((p.delta > 0 ? '+' : '') + p.delta),
-        });
-        const ok = r?.code === 200;
-        results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, after: p.after, ok, msg: ok ? '' : (r?.msg || `code ${r?.code}`) });
-        if (!ok) break;   // stop at first failure; nothing further is sent
-      } catch (e) { results.push({ label: p.s.label, delta: p.delta, before: p.s.amount, ok: false, msg: e.message }); break; }
-    }
-    REFILL_CACHE.t = 0;
-    const out = { ok: results.every(r => r.ok) && results.length === plan.length, results, skipped: plan.length - results.length };
-    if (token) { REFILL_DONE.set(token, out); setTimeout(() => REFILL_DONE.delete(token), 600000); }
+    const out = await machineLock(async () => {
+      const byId = new Map((await getSlots()).map(s => [s.id, s])), plan = [], seen = new Set();
+      for (const c of changes) {
+        const s = byId.get(String(c.id)), d = parseInt(c.delta, 10);
+        const bad = m => { const e = new Error(m); e.code = 400; throw e; };
+        if (!s) bad('Unknown slot ' + c.id);
+        if (seen.has(s.id)) bad('Slot ' + s.label + ' listed twice'); seen.add(s.id);
+        if (!Number.isInteger(d) || d === 0) continue;
+        if (s.amount + d < 0 || s.amount + d > s.vol) bad(`Slot ${s.label}: ${s.amount} ${d > 0 ? '+' : ''}${d} is outside 0–${s.vol}`);
+        plan.push({ s, delta: d, after: s.amount + d });
+      }
+      if (!plan.length) { const e = new Error('Nothing to change'); e.code = 400; throw e; }
+      const results = await applyToMachine(plan);
+      const url = (process.env.SUPABASE_URL || '').replace(/\/+$/, ''), key = process.env.SUPABASE_SERVICE_KEY || '';
+      let logged = false;
+      if (url && key) {
+        try {
+          const rows = results.filter(r => r.ok).map(r => ({ actor: roleName(req), slot_label: r.label, delta: r.delta, before_qty: r.before, after_qty: r.after, note }));
+          if (rows.length) { const lr = await fetch(`${url}/rest/v1/vend_slot_corrections`, { method: 'POST', headers: { apikey: key, Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' }, body: JSON.stringify(rows) }); logged = lr.ok; }
+        } catch (e) { /* logging is best effort */ }
+      }
+      return { ok: results.every(r => r.ok) && results.length === plan.length, results, logged, skipped: plan.length - results.length };
+    });
     res.status(out.ok ? 200 : 502).json(out);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-  finally { REFILL_BUSY = false; }
+  } catch (e) { res.status(e.code && e.code < 600 ? e.code : 500).json({ error: e.message }); }
 });
 
 // ── RECONNECT: paste a session obtained by a manual (captcha) login ───────
@@ -1794,8 +1831,10 @@ app.post('/api/session', async (req, res) => {
 });
 
 app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));
-app.get('/cycles', (req, res) => res.sendFile(path.join(__dirname, 'cycles.html')));
-require('./cycles')(app, { CFG, getOrdersCached, getProductCode, getSlots });
+app.get('/planogram', (req, res) => res.sendFile(path.join(__dirname, 'planogram.html')));
+app.get('/invoicing', (req, res) => res.sendFile(path.join(__dirname, 'invoicing.html')));
+app.get('/cycles', (req, res) => res.redirect('/refill'));
+require('./cycles')(app, { CFG, getOrdersCached, getProductCode, getSlots, applyToMachine, machineLock, roleName });
 app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
 app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
 app.get('/logo.png', (req, res) => res.sendFile(path.join(__dirname, 'New Radwa Logo with text- trasperant.png')));

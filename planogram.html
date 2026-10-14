@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Planogram</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
+<style>
+.mx{width:100%;border-collapse:separate;border-spacing:6px;table-layout:fixed}
+.mx th{background:none;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;text-align:center;padding:2px 0;border:0}
+.mx td{border:0;padding:0;vertical-align:top}.mx tr:hover td{background:none}
+.mx th.r,.mx td.r{width:64px;text-align:left}
+.mx .rn{background:#173404;color:#84BD00;font-weight:800;font-size:12px;border-radius:8px;padding:4px 9px;white-space:nowrap;display:inline-block}
+.mx .rc{font-size:11px;color:#57534e;font-weight:600;margin-top:4px}
+.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:8px 6px;background:#fafaf9;text-align:center;min-width:0}
+.sl.full{border-color:#bbf7d0;background:#f0fdf4}.sl.empty{border-color:#fecdd3;background:#fff1f2}.sl.chg{border-color:#84BD00;background:#f1f9dc}
+.sl .mn{font-size:12px;font-weight:700;color:#292524;line-height:1.2;min-height:15px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sl .lb{font-size:10px;font-weight:700;color:#78716c;margin-bottom:4px}
+.sl .qq{font-size:24px;font-weight:800;color:#1c1917;line-height:1.1;font-variant-numeric:tabular-nums}
+.sl .qq i{font-style:normal;font-size:12px;font-weight:600;color:#78716c}
+.sl.empty .qq{color:#be123c}
+.sl .ct{display:flex;align-items:center;justify-content:center;gap:6px}
+.sl .ct .qq{font-size:20px;min-width:34px}
+.sl button{width:38px;height:40px;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;padding:0;touch-action:manipulation}
+.sl button:disabled{opacity:.35;cursor:not-allowed}
+.sl .dd{font-size:11px;font-weight:700;height:13px;color:#4d7000}.sl .dd.n{color:#be123c}
+.sl.off{background:repeating-linear-gradient(135deg,#f5f5f4,#f5f5f4 7px,#ebe9e7 7px,#ebe9e7 14px);border:1px dashed #c4c0bb;color:#a8a29e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:78px}
+.sl.off .lb{margin:0;color:#a8a29e}.sl.off .na{font-size:11px;font-weight:700;color:#78716c}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.chp{border:1.5px solid #e7e5e4;border-radius:10px;padding:6px 10px;font-size:12px;background:#fff}
+.chp b{font-size:15px}.chp.low{border-color:#fecdd3;background:#fff1f2}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#57534e;margin-top:10px}.leg i{display:inline-block;width:12px;height:12px;border-radius:4px;vertical-align:-2px;margin-right:4px;border:1px solid #d6d3d1}
+.adm{margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3}
+.adm input{width:100%;height:44px;border:1.5px solid #e7e5e4;border-radius:11px;padding:0 12px;font:inherit;font-size:14px;margin:6px 0 10px}
+.note{font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px}.note.ok{background:#ecfdf5;color:#047857}.note.bad{background:#fff1f2;color:#be123c}
+@media(max-width:640px){.mx{border-spacing:3px}.mx th.r,.mx td.r{width:44px}.mx th{font-size:9px;letter-spacing:0}
+ .sl{padding:6px 3px}.sl .mn{font-size:10.5px;white-space:normal;min-height:26px}.sl .qq{font-size:20px}
+ .sl .ct{flex-wrap:wrap;gap:4px}.sl .ct .qq{order:-1;width:100%}.sl button{flex:1;width:auto;height:38px;font-size:18px}}
+</style></head>
+<body>
+<div id="hdr"></div>
+<div class="wrap"><div class="card" id="box"><div class="msg">Loading…</div></div></div>
+<script src="/ui.js"></script>
+<script>
+(function(){
+  var U = RUI, esc = U.esc, box = document.getElementById('box');
+  U.header('planogram', { sub: 'Planogram · live stock · Dahban · Machine 203617400' });
+  var slots = [], at = '', err = '', admin = false, edit = false, draft = {}, msg = '', busy = false;
+  function get(k){ return slots.filter(function(s){ return s.label === k; })[0]; }
+  function tok(){ return 'p' + Date.now() + Math.random().toString(36).slice(2); }
+  function cell(s){
+    if (!s.active) return '<div class="sl off"><div class="lb">'+esc(s.label)+'</div><div class="na">🔒 Not active</div></div>';
+    var d = draft[s.label] || 0, q = s.amount + d, cls = d ? 'chg' : q <= 0 ? 'empty' : q >= s.vol ? 'full' : '';
+    if (!edit) return '<div class="sl '+cls+'"><div class="mn" title="'+esc(s.short)+'">'+esc(s.short)+'</div><div class="lb">'+esc(s.label)+'</div><div class="qq">'+q+'<i>/'+s.vol+'</i></div></div>';
+    return '<div class="sl '+cls+'"><div class="mn">'+esc(s.short)+'</div><div class="lb">'+esc(s.label)+'</div><div class="ct"><button data-a="m" data-k="'+esc(s.label)+'"'+(q<=0?' disabled':'')+'>−</button><div class="qq">'+q+'<i>/'+s.vol+'</i></div><button data-a="p" data-k="'+esc(s.label)+'"'+(q>=s.vol?' disabled':'')+'>+</button></div><div class="dd'+(d<0?' n':'')+'">'+(d?(d>0?'+':'')+d:'')+'</div></div>';
+  }
+  function draw(){
+    if (err) { box.innerHTML = '<div class="msg err">Could not load the planogram: '+esc(err)+'</div>'; return; }
+    if (!slots.length) { box.innerHTML = '<div class="msg">Loading…</div>'; return; }
+    var rows = {}, maxc = 0, cap = 0, cur = 0, byp = {};
+    slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); if (s.col > maxc) maxc = s.col;
+      if (s.active){ var q = s.amount + (draft[s.label]||0); cap += s.vol; cur += q; var p = byp[s.short] || (byp[s.short] = { n:0, c:0 }); p.n += q; p.c += s.vol; } });
+    var h = '<div class="sec-h"><div class="sec-n">▦</div><span class="sec-t">Machine stock</span><span class="badge">'+cur+' / '+cap+' units</span></div>';
+    h += '<div class="chips">' + Object.keys(byp).map(function(k){ var p = byp[k]; return '<div class="chp'+(p.n/p.c < .35 ? ' low' : '')+'">'+esc(k)+' <b>'+p.n+'</b>/'+p.c+'</div>'; }).join('') + '</div>';
+    h += '<div class="scroll"><table class="mx"><tr><th class="r">Row</th>';
+    for (var c=1; c<=maxc; c++) h += '<th>Slot '+c+'</th>';
+    h += '</tr>';
+    Object.keys(rows).forEach(function(r){
+      var list = rows[r], rc = 0, rv = 0;
+      list.forEach(function(s){ if (s.active){ rc += s.vol; rv += s.amount + (draft[s.label]||0); } });
+      h += '<tr><td class="r"><span class="rn">'+esc(r)+'</span><div class="rc">'+(rc?rv+' / '+rc:'')+'</div></td>';
+      for (var c=1; c<=maxc; c++){ var s = list.filter(function(x){ return x.col === c; })[0]; h += '<td>'+(s ? cell(s) : '')+'</td>'; }
+      h += '</tr>';
+    });
+    h += '</table></div><div class="leg"><span><i style="background:#f0fdf4;border-color:#bbf7d0"></i>full</span><span><i style="background:#fff1f2;border-color:#fecdd3"></i>empty</span><span><i style="background:#ebe9e7"></i>not active</span><span style="margin-left:auto">Updated '+esc(at ? new Date(at).toLocaleTimeString('en-GB',{timeZone:'Asia/Riyadh',hour:'2-digit',minute:'2-digit'}) : '')+' KSA · refreshes every minute</span></div>';
+    if (admin && !edit) h += '<div style="margin-top:14px"><button class="btn" data-a="edit">Admin: correct stock</button></div>';
+    if (admin && edit) {
+      var n = Object.keys(draft).filter(function(k){ return draft[k]; }).length;
+      h += '<div class="adm"><b style="font-size:13px">Admin correction</b><div style="font-size:12px;color:#57534e;margin-top:2px">Changes the machine count directly (for a miscount or a damaged unit). It is logged with your reason. Normal refills go through a stock request on the Refill tab.</div>'+
+        '<input id="nt" placeholder="Reason (required)" autocomplete="off"><div style="display:flex;gap:10px;flex-wrap:wrap"><button class="btn green" data-a="go"'+(n&&!busy?'':' disabled')+'>'+(busy?'Sending…':'Apply correction')+'</button><button class="btn" data-a="cx">Cancel</button></div></div>';
+    }
+    if (msg) h += msg;
+    box.innerHTML = h;
+  }
+  box.addEventListener('click', function(e){
+    var b = e.target.closest('button'); if (!b || !b.dataset.a || b.disabled) return;
+    var a = b.dataset.a, s = b.dataset.k && get(b.dataset.k);
+    if (a === 'edit') { edit = true; msg = ''; loadAdmin(); return; }
+    if (a === 'cx') { edit = false; draft = {}; msg = ''; draw(); return; }
+    if (a === 'm') draft[s.label] = Math.max(-s.amount, Math.min(s.vol - s.amount, (draft[s.label]||0) - 1));
+    if (a === 'p') draft[s.label] = Math.max(-s.amount, Math.min(s.vol - s.amount, (draft[s.label]||0) + 1));
+    if (a === 'go') return apply();
+    draw();
+  });
+  function apply(){
+    var note = (document.getElementById('nt') || {}).value || '';
+    if (!note.trim()) { msg = '<div class="note bad">Write the reason first.</div>'; draw(); return; }
+    var list = slots.filter(function(s){ return draft[s.label]; });
+    if (!confirm('Correct the machine stock?\n\n'+list.map(function(s){ return s.label+': '+s.amount+' → '+(s.amount+draft[s.label]); }).join('\n'))) return;
+    busy = true; msg = ''; draw();
+    fetch('/api/admin/correction', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ token: tok(), note: note, changes: list.map(function(s){ return { id: s.id, delta: draft[s.label] }; }) }) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){ msg = d.error ? '<div class="note bad">'+esc(d.error)+'</div>' : '<div class="note '+(d.ok?'ok':'bad')+'">'+(d.ok ? 'Done.' : 'Stopped part way: '+esc((d.results.filter(function(x){return !x.ok;})[0]||{}).msg||'error'))+(d.logged===false?' (could not write the log)':'')+'</div>'; if (!d.error) { draft = {}; edit = false; } })
+      .catch(function(e){ msg = '<div class="note bad">'+esc(e.message)+'</div>'; })
+      .then(function(){ busy = false; load(); });
+  }
+  function loadAdmin(){
+    fetch('/api/admin/slots').then(function(r){ return r.json(); }).then(function(d){
+      if (d.error) throw new Error(d.error);
+      slots = d.slots; draft = {}; draw();
+    }).catch(function(e){ edit = false; msg = '<div class="note bad">'+esc(e.message)+'</div>'; draw(); });
+  }
+  function load(){
+    if (edit) return;
+    U.getJSON('/api/planogram').then(function(d){ if (d.error) throw new Error(d.error); slots = d.slots; at = d.at; err = ''; draw(); })
+      .catch(function(e){ err = e.message; draw(); });
+  }
+  U.getJSON('/api/whoami').then(function(w){ admin = w.role === 'admin'; draw(); }).catch(function(){});
+  draw(); load(); setInterval(load, 60000);
+})();
+</script>
+</body></html>

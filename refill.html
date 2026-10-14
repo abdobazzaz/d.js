@@ -2,55 +2,269 @@
 <html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Radwa Vending – Refill history</title>
+<title>Radwa Vending – Refill</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 <style>
-.mx{width:100%;border-collapse:separate;border-spacing:6px}
-.mx{table-layout:fixed}.mx th{background:none;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;text-align:center;padding:2px 0;border:0}
+
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label.lb{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;margin:12px 0 4px}
+input.in,textarea.in{width:100%;height:44px;border:1.5px solid #e7e5e4;border-radius:11px;padding:0 12px;font-family:inherit;font-size:14px;background:#fff}
+textarea.in{height:64px;padding:10px 12px;resize:vertical}
+input.in:focus,textarea.in:focus{outline:none;border-color:#84BD00}
+.pq{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f4;font-size:14px}
+.pq input{width:84px;text-align:center}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#57534e;padding:8px 6px;border-bottom:2px solid #e7e5e4}
+table.t td{padding:10px 6px;border-bottom:1px solid #f5f5f4;vertical-align:middle}
+table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
+.tag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:#f5f5f4;color:#44403c;white-space:nowrap}
+.tag.go{background:#ecfdf5;color:#047857}.tag.wait{background:#fffbeb;color:#b45309}.tag.done{background:#f0f9ff;color:#0369a1}.tag.x{background:#fff1f2;color:#be123c}
+.steps{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 4px}
+.stp{flex:1 1 90px;min-width:80px;text-align:center;font-size:11px;font-weight:700;padding:8px 4px;border-radius:8px;background:#f5f5f4;color:#78716c}
+.stp.ok{background:#ecfdf5;color:#047857}.stp.now{background:#84BD00;color:#173404}
+.ev{font-size:12px;color:#57534e;padding:6px 0;border-bottom:1px solid #f5f5f4}
+.res{font-size:13px;font-weight:600;border-radius:8px;padding:10px 12px;margin-top:12px}
+.res.ok{background:#ecfdf5;color:#047857}.res.bad{background:#fff1f2;color:#be123c}
+.gapbad{color:#be123c;font-weight:700}.gapok{color:#047857;font-weight:700}
+@media(max-width:640px){.hide-s{display:none}}
+
+.mx{width:100%;border-collapse:separate;border-spacing:6px;table-layout:fixed}
+.mx th{background:none;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;text-align:center;padding:2px 0;border:0}
 .mx td{border:0;padding:0;vertical-align:top}.mx tr:hover td{background:none}
 .mx th.r,.mx td.r{width:64px;text-align:left}
 .mx .rn{background:#173404;color:#84BD00;font-weight:800;font-size:12px;border-radius:8px;padding:4px 9px;white-space:nowrap;display:inline-block}
 .mx .rc{font-size:11px;color:#57534e;font-weight:600;margin-top:4px}
-.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:7px 6px 6px;background:#fafaf9;text-align:center;min-width:0}
-.sl.full{border-color:#bbf7d0;background:#f0fdf4}.sl.empty{border-color:#fecdd3;background:#fff1f2}
-.sl.chg{border-color:#84BD00;background:#f1f9dc}
+.sl{border:1.5px solid #e7e5e4;border-radius:12px;padding:8px 6px;background:#fafaf9;text-align:center;min-width:0}
+.sl.full{border-color:#bbf7d0;background:#f0fdf4}.sl.empty{border-color:#fecdd3;background:#fff1f2}.sl.chg{border-color:#84BD00;background:#f1f9dc}
 .sl .mn{font-size:12px;font-weight:700;color:#292524;line-height:1.2;min-height:15px;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sl .lb{font-size:10px;font-weight:700;color:#78716c;margin-bottom:4px}
+.sl .qq{font-size:24px;font-weight:800;color:#1c1917;line-height:1.1;font-variant-numeric:tabular-nums}
+.sl .qq i{font-style:normal;font-size:12px;font-weight:600;color:#78716c}
+.sl.empty .qq{color:#be123c}
 .sl .ct{display:flex;align-items:center;justify-content:center;gap:6px}
-.sl .qq{font-size:20px;font-weight:800;color:#1c1917;line-height:1;min-width:34px;font-variant-numeric:tabular-nums}
-.sl .qq i{font-style:normal;font-size:11px;font-weight:600;color:#78716c}
-.sl .dd{font-size:11px;font-weight:700;height:13px;color:#4d7000}.sl .dd.n{color:#be123c}
-.sl button{width:38px;height:40px;flex:none;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;touch-action:manipulation;padding:0}
-.sl button:active{background:#e8f3cc}
+.sl .ct .qq{font-size:20px;min-width:34px}
+.sl button{width:38px;height:40px;border:1px solid #d6d3d1;background:#fff;border-radius:9px;font-size:20px;font-weight:700;color:#173404;cursor:pointer;padding:0;touch-action:manipulation}
 .sl button:disabled{opacity:.35;cursor:not-allowed}
+.sl .dd{font-size:11px;font-weight:700;height:13px;color:#4d7000}.sl .dd.n{color:#be123c}
 .sl.off{background:repeating-linear-gradient(135deg,#f5f5f4,#f5f5f4 7px,#ebe9e7 7px,#ebe9e7 14px);border:1px dashed #c4c0bb;color:#a8a29e;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:78px}
 .sl.off .lb{margin:0;color:#a8a29e}.sl.off .na{font-size:11px;font-weight:700;color:#78716c}
-.bar2{position:sticky;bottom:0;z-index:5;display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 0 2px;margin-top:6px;background:#fff;border-top:1px solid #f1f5f9}
-.bar2 .sm{font-size:13px;font-weight:700;flex:1;min-width:120px}
-.bar2 .btn{height:44px}
-.note{font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px}
-.note.ok{background:#ecfdf5;color:#047857}.note.bad{background:#fff1f2;color:#be123c}
-@media(max-width:640px){
-  .card{padding:14px}
-  .mx{border-spacing:3px}.mx th.r,.mx td.r{width:44px}
-  .sl{padding:6px 3px 5px}.sl .mn{font-size:10.5px;white-space:normal;min-height:26px}
-  .sl .ct{flex-wrap:wrap;gap:4px}.sl .qq{order:-1;width:100%;font-size:19px}.sl button{flex:1;width:auto;height:38px;font-size:18px}
-  .mx th{font-size:9px;letter-spacing:0}
-  .bar2 .btn{flex:1}
-  .bar2 .sm{flex-basis:100%}
-}
-</style>
-</head>
+
+.rb{margin-top:10px}
+.rem{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px}
+.rem .c{border:1.5px solid #e7e5e4;border-radius:10px;padding:6px 10px;font-size:12px;background:#fff}.rem .c b{font-size:15px}.rem .c.zero{border-color:#bbf7d0;background:#f0fdf4;color:#047857}
+.note{font-size:12px;padding:8px 12px;border-radius:8px;margin-top:8px}.note.ok{background:#ecfdf5;color:#047857}.note.bad{background:#fff1f2;color:#be123c}
+
+</style></head>
 <body>
 <div id="hdr"></div>
-<div class="wrap" id="fill" style="padding-bottom:0"></div>
-<div class="wrap" id="out"><div class="msg">Loading…</div></div>
+<div class="wrap" style="max-width:980px">
+  <div id="top"></div>
+  <div class="card" id="newc" style="display:none"></div>
+  <div class="card" id="detail" style="display:none"></div>
+  <div class="card"><div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Stock requests</span></div><div id="list"><div class="msg">Loading…</div></div></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:18px 0 8px"><b style="font-size:15px">Refill history</b><span style="font-size:12px;color:#78716c">from the machine cloud</span><span id="hact" style="margin-left:auto;display:flex;gap:8px;align-items:center"></span></div>
+  <div id="out"><div class="msg">Loading…</div></div>
+</div>
 <script src="/ui.js"></script>
 <script>
+
+(function(){
+  var $ = function(i){ return document.getElementById(i); }, esc = RUI.esc;
+  var META = null;
+  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Closed', refill_batch:'Refill', checked:'Sales checked', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
+  var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Close the request (check machine stock)', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the settlement' };
+  RUI.header('refill', { sub: 'Refill · stock requests · Dahban' });
+
+  function api(method, url, body){
+    return fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined })
+      .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || r.status); return j; }); });
+  }
+  function fdt(iso){ return iso ? new Date(iso).toLocaleString('en-GB',{timeZone:'Asia/Riyadh',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}) : '—'; }
+  function sar(n){ return n == null ? '—' : Number(n).toFixed(2) + ' SAR'; }
+  function dash(v){ return v == null ? '—' : v; }
+  function pname(code){ var p = META.products.filter(function(x){ return x.code === code; })[0]; return p ? p.name : code; }
+  function nextIn(list, stage){ var i = list.indexOf(stage); return i >= 0 ? list[i+1] : null; }
+  function toInput(iso){ return new Date(new Date(iso).getTime() + 3*3600000).toISOString().slice(0,16); }
+  function fromInput(v){ return new Date(v + ':00+03:00').toISOString(); }
+  function stepRow(list, stage){
+    var idx = list.indexOf(stage);
+    return '<div class="steps">' + list.map(function(s,i){
+      var cls = stage === 'cancelled' ? '' : (i <= idx ? ' ok' : i === idx+1 ? ' now' : '');
+      return '<div class="stp'+cls+'">'+(cls===' ok'?'✓ ':'')+esc(LABEL[s])+'</div>';
+    }).join('') + '</div>';
+  }
+  // ═════════ SECTION 1: stock requests ═════════
+  function loadRequests(){
+    api('GET','/api/cycles').then(function(d){
+      var c = d.cycles, open = c.filter(function(x){ return x.stage !== 'cloud_updated' && x.stage !== 'cancelled'; });
+      var ready = c.filter(function(x){ return x.stage === 'cloud_updated' && !x.settlement_id; });
+      $('top').innerHTML = '<div class="stats"><div class="stat info"><div class="l">In progress</div><div class="v">'+open.length+'</div><div class="s">requesting, receiving or refilling</div></div>' +
+        '<div class="stat '+(ready.length?'warn':'good')+'"><div class="l">Closed, waiting for invoicing</div><div class="v">'+ready.length+'</div><div class="s">the admin invoices these</div></div></div>' +
+        '<div><button class="btn green" id="newbtn">+ New stock request</button></div>';
+      $('newbtn').onclick = showNewRequest;
+      if (!c.length) { $('list').innerHTML = '<div class="msg">No stock requests yet. Press "New stock request" when you request stock in D365.</div>'; return; }
+      $('list').innerHTML = '<table class="t"><thead><tr><th>Request</th><th class="hide-s">Salesman</th><th>Stage</th><th>Invoice</th></tr></thead><tbody>' +
+        c.map(function(x){
+          var cls = x.stage === 'cancelled' ? 'x' : x.stage === 'cloud_updated' ? 'done' : x.stage === 'issued' ? 'wait' : 'go';
+          var inv = x.stage === 'cancelled' ? '—' : x.vend_settlements ? '<span class="tag done">'+esc(x.vend_settlements.settlement_no)+'</span>' : (x.stage === 'cloud_updated' ? '<span class="tag wait">Not yet</span>' : '—');
+          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+' · '+fdt(x.issued_at)+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+cls+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td>'+inv+'</td></tr>';
+        }).join('') + '</tbody></table>';
+      [].forEach.call(document.querySelectorAll('tr.cl'), function(r){ r.onclick = function(){ openRequest(r.getAttribute('data-id')); }; });
+    }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
+  }
+
+  function showNewRequest(){
+    $('detail').style.display = 'none';
+    $('newc').innerHTML = '<div class="msg">Reading live stock from the machine…</div>'; $('newc').style.display = '';
+    api('GET','/api/cycles/live').then(function(r){ return r.live; }, function(){ return null; }).then(function(live){
+      $('newc').innerHTML = '<div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Request stock (D365)</span></div>' +
+        '<div class="row2"><div><label class="lb">Salesman</label><input class="in" id="n_s" autocomplete="off"></div><div><label class="lb">D365 request / issue reference</label><input class="in" id="n_r" autocomplete="off"></div></div>' +
+        '<label class="lb">Quantity to request (units)</label>' +
+        (live ? '<div style="font-size:12px;color:#78716c;margin-bottom:4px">Prefilled with the free space in the machine right now. Change as needed.</div>' : '<div style="font-size:12px;color:#be123c;margin-bottom:4px">Machine cloud not reachable, so live stock is not shown.</div>') +
+        META.products.map(function(p){
+          var l = live && live[p.code];
+          return '<div class="pq"><span>'+esc(p.emoji)+' <b>'+esc(p.code)+'</b> '+esc(p.name)+(l?'<div style="font-size:11px;color:#78716c">In machine now: <b>'+l.stock+'</b> of '+l.capacity+' · free space '+l.free+'</div>':'')+'</span><input class="in nq" data-c="'+esc(p.code)+'" type="number" min="0" max="999" inputmode="numeric" placeholder="0" value="'+(l && l.free > 0 ? l.free : '')+'"></div>';
+        }).join('') +
+        '<label class="lb">Notes (optional)</label><textarea class="in" id="n_n"></textarea>' +
+        '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn green" id="n_go">Create request</button><button class="btn" id="n_x">Cancel</button></div><div id="n_out"></div>';
+      $('n_x').onclick = function(){ $('newc').style.display = 'none'; };
+      $('n_go').onclick = function(){
+        var lines = [].map.call(document.querySelectorAll('.nq'), function(i){ return { product_code: i.getAttribute('data-c'), qty: Number(i.value) }; }).filter(function(l){ return l.qty > 0; });
+        var b = $('n_go'); b.disabled = true;
+        api('POST','/api/cycles',{ salesman:$('n_s').value, d365_issue_ref:$('n_r').value, notes:$('n_n').value, lines:lines })
+          .then(function(r){ $('newc').style.display = 'none'; loadRequests(); openRequest(r.id); })
+          .catch(function(e){ $('n_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; })
+          .then(function(){ b.disabled = false; });
+      };
+      $('newc').scrollIntoView({behavior:'smooth'});
+    });
+  }
+
+  function openRequest(id){
+    $('newc').style.display = 'none';
+    api('GET','/api/cycles/'+id).then(function(c){
+      var cancelled = c.stage === 'cancelled';
+      var nxt = cancelled ? null : nextIn(META.stages, c.stage);
+      var recon = {}; (c.recon || []).forEach(function(r){ recon[r.product_code] = r; });
+      var hasRecon = !!c.recon;
+      var lines = '<div style="overflow-x:auto"><table class="t"><thead><tr><th>Product</th><th>At request</th><th>Req.</th><th>Recv.</th><th>Refilled</th>' + (hasRecon ? '<th>Sold</th><th>Expect</th><th>Live</th>' : '') + '</tr></thead><tbody>' +
+        c.vend_cycle_lines.map(function(l){
+          var r = recon[l.product_code] || {};
+          var cell = hasRecon ? '<td>'+dash(r.sold_since)+'</td><td>'+dash(r.expected)+'</td><td>'+(r.live==null?'—':('<b class="'+(r.diff==null?'':r.diff===0?'gapok':'gapbad')+'">'+r.live+(r.diff?' ('+(r.diff>0?'+':'')+r.diff+')':'')+'</b>'))+'</td>' : '';
+          return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+dash(l.stock_before)+'</td><td>'+l.qty_issued+'</td><td>'+dash(l.qty_received)+'</td><td>'+dash(l.qty_refilled)+'</td>'+cell+'</tr>';
+        }).join('') + '</tbody></table></div>' +
+        (hasRecon ? '<div style="font-size:11px;color:#78716c;margin-top:6px">At request = units the machine cloud showed when this request was created. Expect = at request + refilled − sold since. Live = what the machine cloud shows now. Red means the machine does not match this request. Every product is tracked, even if you did not request it.</div>' : '') +
+        (c.recon_error ? '<div class="res bad">Live stock not available: '+esc(c.recon_error)+'</div>' : '');
+      var act = '';
+      if (nxt) {
+        if (nxt === 'refilled') act += '<div id="rbox"></div>';
+        if (nxt === 'received') {
+          var base = 'qty_issued';
+          act += '<label class="lb">Quantity received (change only if different)</label>' +
+            c.vend_cycle_lines.map(function(l){ return '<div class="pq"><span><b>'+esc(l.product_code)+'</b> '+esc(pname(l.product_code))+'</span><input class="in aq" data-c="'+esc(l.product_code)+'" type="number" min="0" max="999" inputmode="numeric" value="'+(l[base]==null?0:l[base])+'"></div>'; }).join('');
+        }
+        if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Compares the live machine stock with this request. If it differs, ask the admin to correct the slot on the Planogram, or write a note to confirm anyway.</div>';
+        act += '<label class="lb">Note'+(nxt==='cloud_updated'?' (required if stock differs)':nxt==='refilled'?' (required if not everything received was refilled)':' (optional)')+'</label><input class="in" id="a_note" autocomplete="off">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn green" id="a_go">'+esc(NEXT_BTN[nxt])+'</button>'+(c.settlement_id?'':'<button class="btn" id="a_cx">Cancel this request</button>')+'</div><div id="a_out"></div>';
+      } else if (!cancelled && !c.settlement_id) {
+        act = '<div class="res ok" style="margin-top:12px">Request closed. The admin will include it in the next invoicing.</div>' +
+              '<div style="margin-top:10px"><button class="btn" id="a_cx">Cancel this request</button></div><div id="a_out"></div>';
+      }
+      var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
+      $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
+        '<div style="font-size:12px;color:#78716c">D365 '+esc(c.d365_issue_ref||'—')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+(c.vend_settlements?' · Invoiced in <b>'+esc(c.vend_settlements.settlement_no)+'</b>':'')+'</div>' +
+        stepRow(META.stages, c.stage) + lines +
+        (act ? '<div style="margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3">'+(nxt?'<b style="font-size:13px">Next step: '+esc(LABEL[nxt])+'</b>':'')+act+'</div>' : '') +
+        '<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
+      $('detail').style.display = '';
+      if ($('rbox')) refillBox(c, $('rbox'));
+      $('d_x').onclick = function(){ $('detail').style.display = 'none'; };
+      if ($('a_go')) $('a_go').onclick = function(){
+        var body = { to: nxt, note: $('a_note').value };
+        var q = {}; [].forEach.call(document.querySelectorAll('.aq'), function(i){ q[i.getAttribute('data-c')] = Number(i.value); });
+        if (Object.keys(q).length) body.qty = q;
+        sendReq(id, body, $('a_go'));
+      };
+      if ($('a_cx')) $('a_cx').onclick = function(){ var why = prompt('Reason for cancelling this request?'); if (why) sendReq(id, { to:'cancelled', note: why }, $('a_cx')); };
+      $('detail').scrollIntoView({behavior:'smooth'});
+    }).catch(function(e){ $('detail').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; $('detail').style.display = ''; });
+  }
+  function sendReq(id, body, btn){
+    btn.disabled = true;
+    api('POST','/api/cycles/'+id+'/advance', body)
+      .then(function(){ loadRequests(); openRequest(id); })
+      .catch(function(e){ $('a_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; btn.disabled = false; });
+  }
+
+
+  // ═════════ planogram refill: tap + on the slots, units are counted against what was received ═════════
+  function refillBox(c, host){
+    var left = {}; c.vend_cycle_lines.forEach(function(l){ left[l.product_code] = (l.qty_received || 0) - (l.qty_refilled || 0); });
+    var slots = [], draft = {}, busy = false, msg = '';
+    function tok(){ return 'r' + Date.now() + Math.random().toString(36).slice(2); }
+    function get(id){ return slots.filter(function(s){ return s.id === id; })[0]; }
+    function used(sku){ var n = 0; slots.forEach(function(s){ if (s.sku === sku) n += draft[s.id] || 0; }); return n; }
+    function rem(sku){ return (left[sku] || 0) - used(sku); }
+    function cell(s){
+      if (!s.active || s.disabled) return '<div class="sl off"><div class="lb">'+esc(s.label)+'</div><div class="na">🔒 Not active</div></div>';
+      var d = draft[s.id] || 0, q = s.amount + d, cls = d ? 'chg' : q <= 0 ? 'empty' : q >= s.vol ? 'full' : '';
+      var canP = s.sku && q < s.vol && rem(s.sku) > 0;
+      return '<div class="sl '+cls+'"><div class="mn" title="'+esc(s.name)+'">'+esc(s.short)+'</div><div class="lb">'+esc(s.label)+'</div><div class="ct"><button data-a="m" data-id="'+s.id+'"'+(d>0?'':' disabled')+'>−</button><div class="qq">'+q+'<i>/'+s.vol+'</i></div><button data-a="p" data-id="'+s.id+'"'+(canP?'':' disabled')+'>+</button></div><div class="dd">'+(d?'+'+d:'')+'</div></div>';
+    }
+    function draw(){
+      if (!slots.length) { host.innerHTML = '<div class="msg">Loading the planogram…</div>'; return; }
+      var rows = {}, maxc = 0; slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); if (s.col > maxc) maxc = s.col; });
+      var h = '<div class="rem">' + c.vend_cycle_lines.filter(function(l){ return (l.qty_received || 0) > 0; }).map(function(l){
+        var r = rem(l.product_code); return '<div class="c'+(r===0?' zero':'')+'">'+esc(l.product_code)+' '+esc(pname(l.product_code).replace(/\s*\d+\s*gms?$/i,''))+': <b>'+r+'</b> left of '+l.qty_received+'</div>'; }).join('') + '</div>';
+      h += '<div class="scroll"><table class="mx"><tr><th class="r">Row</th>';
+      for (var k=1; k<=maxc; k++) h += '<th>Slot '+k+'</th>';
+      h += '</tr>';
+      Object.keys(rows).forEach(function(r){
+        h += '<tr><td class="r"><span class="rn">'+esc(r)+'</span></td>';
+        for (var k=1; k<=maxc; k++){ var s = rows[r].filter(function(x){ return x.col === k; })[0]; h += '<td>'+(s ? cell(s) : '')+'</td>'; }
+        h += '</tr>';
+      });
+      h += '</table></div>';
+      var n = 0, u = 0; Object.keys(draft).forEach(function(k){ if (draft[k]) { n++; u += draft[k]; } });
+      h += '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px"><span style="font-size:13px;font-weight:700;flex:1;min-width:120px">'+(n ? n+' slot'+(n>1?'s':'')+' · +'+u+' units' : 'Tap + on the slots you are filling')+'</span><button class="btn" data-a="clr"'+(n?'':' disabled')+'>Clear</button><button class="btn green" data-a="go"'+(n&&!busy?'':' disabled')+'>'+(busy?'Sending…':'Apply to machine')+'</button></div>' + msg;
+      host.innerHTML = h;
+    }
+    host.addEventListener('click', function(e){
+      var b = e.target.closest('button'); if (!b || !b.dataset.a || b.disabled) return;
+      var a = b.dataset.a, s = b.dataset.id && get(b.dataset.id);
+      if (a === 'p') draft[s.id] = (draft[s.id] || 0) + 1;
+      else if (a === 'm') draft[s.id] = Math.max(0, (draft[s.id] || 0) - 1);
+      else if (a === 'clr') { draft = {}; msg = ''; }
+      else if (a === 'go') return apply();
+      msg = ''; draw();
+    });
+    function apply(){
+      var list = slots.filter(function(s){ return draft[s.id]; });
+      if (!list.length || busy) return;
+      if (!confirm('Add to the machine?\n\n'+list.map(function(s){ return s.label+' '+s.short+': '+s.amount+' → '+(s.amount+draft[s.id]); }).join('\n'))) return;
+      busy = true; msg = ''; draw();
+      api('POST', '/api/cycles/'+c.id+'/refill', { token: tok(), changes: list.map(function(s){ return { id: s.id, delta: draft[s.id] }; }) })
+        .then(function(d){ openRequest(c.id); loadRequests(); }, function(e){ msg = '<div class="note bad">'+esc(e.message)+'</div>'; busy = false; loadSlots(); })
+    }
+    function loadSlots(){
+      api('GET', '/api/refill/slots').then(function(d){ slots = d.slots; draft = {}; draw(); })
+        .catch(function(e){ host.innerHTML = '<div class="note bad">Could not read the machine: '+esc(e.message)+'</div>'; });
+    }
+    draw(); loadSlots();
+  }
+
+  function render(){ $('list').innerHTML = '<div class="msg">Loading…</div>'; loadRequests(); }
+  api('GET','/api/cycles/meta').then(function(m){
+    META = m;
+    if (!m.configured) { $('top').innerHTML = '<div class="stat warn"><div class="l">Not switched on yet</div><div class="v" style="font-size:16px">Stock requests need two settings in Render</div><div class="s">Add SUPABASE_URL and SUPABASE_SERVICE_KEY under Environment, then save.</div></div>'; $('list').innerHTML = ''; return; }
+    render();
+  }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
+})();
+
 (function(){
   var U = RUI, esc = U.esc;
-  var actions = U.header('refill', { sub: 'Refill history · Dahban · Machine 203617400' });
+  var actions = document.getElementById('hact');
   var rpHost = document.createElement('div');
   var xl = document.createElement('button'); xl.className = 'btn green'; xl.textContent = '⬇ Excel';
   actions.appendChild(rpHost); actions.appendChild(xl);
@@ -115,81 +329,5 @@
   load();
 })();
 
-(function(){
-  var U = RUI, esc = U.esc, box = document.getElementById('fill');
-  var slots = [], draft = {}, busy = false, msg = '';
-  function tok(){ return 'r' + Date.now() + Math.random().toString(36).slice(2); }
-  function get(id){ return slots.filter(function(s){return s.id===id;})[0]; }
-  function clamp(s, v){ if (!s.active) return 0; return Math.max(-s.amount, Math.min(s.free, v)); }
-  function total(){ var n=0,u=0; Object.keys(draft).forEach(function(k){ if(draft[k]){n++;u+=draft[k];} }); return [n,u]; }
-  function draw(){
-    var rows = {}, maxc = 0; slots.forEach(function(s){ (rows[s.row] = rows[s.row] || []).push(s); if (s.col > maxc) maxc = s.col; });
-    var cap=0, cur=0; slots.forEach(function(s){ if (s.active){ cap+=s.vol; cur+=s.amount; } });
-    var h = '<div class="card"><div class="sec-h"><div class="sec-n">+</div><span class="sec-t">Refill machine</span><span class="badge">'+cur+' / '+cap+' units in machine</span></div>';
-    if (!slots.length) h += '<div class="msg">Loading slots…</div>';
-    else {
-      h += '<div class="scroll"><table class="mx"><tr><th class="r">Row</th>';
-      for (var c=1; c<=maxc; c++) h += '<th>Slot '+c+'</th>';
-      h += '</tr>';
-      Object.keys(rows).forEach(function(r){
-        var list = rows[r], rc=0, rv=0;
-        list.forEach(function(s){ if (s.active){ rc+=s.vol; rv+=s.amount; } });
-        h += '<tr><td class="r"><span class="rn">'+esc(r)+'</span><div class="rc">'+(rc?rv+' / '+rc:'')+'</div></td>';
-        for (var c=1; c<=maxc; c++){
-          var s = list.filter(function(x){ return x.col===c; })[0];
-          if (!s){ h += '<td></td>'; continue; }
-          if (!s.active){ h += '<td><div class="sl off"><div class="lb">'+esc(s.label)+'</div><div class="na">🔒 Not active</div></div></td>'; continue; }
-          var d = draft[s.id] || 0, q = s.amount + d;
-          h += '<td><div class="sl '+(d?'chg':q<=0?'empty':q>=s.vol?'full':'')+'"><div class="mn" title="'+esc(s.name)+'">'+esc(s.short)+'</div><div class="lb">'+esc(s.label)+'</div>'+
-            '<div class="ct"><button data-a="m" data-id="'+s.id+'" aria-label="minus">−</button><div class="qq">'+q+'<i>/'+s.vol+'</i></div><button data-a="p" data-id="'+s.id+'" aria-label="plus">+</button></div>'+
-            '<div class="dd'+(d<0?' n':'')+'">'+(d?(d>0?'+':'')+d:'')+'</div></div></td>';
-        }
-        h += '</tr>';
-      });
-      h += '</table></div>';
-    }
-    var t = total();
-    h += '<div class="bar2"><span class="sm">'+(t[0]?t[0]+' slot'+(t[0]>1?'s':'')+' · '+(t[1]>0?'+':'')+t[1]+' units':'Tap + on a slot to add stock')+'</span>'+
-      '<button class="btn" data-a="all">Fill all</button><button class="btn" data-a="clr"'+(t[0]?'':' disabled')+'>Clear</button>'+
-      '<button class="btn green" data-a="go"'+(t[0]&&!busy?'':' disabled')+'>'+(busy?'Sending…':'Apply refill')+'</button></div>';
-    if (msg) h += msg;
-    box.innerHTML = h + '</div>';
-  }
-  box.addEventListener('click', function(e){
-    var b = e.target.closest('button'); if (!b || !b.dataset.a || b.disabled) return;
-    var a = b.dataset.a, s = b.dataset.id && get(b.dataset.id);
-    if (a==='m') draft[s.id] = clamp(s, (draft[s.id]||0)-1);
-    else if (a==='p') draft[s.id] = clamp(s, (draft[s.id]||0)+1);
-    else if (a==='all') slots.forEach(function(x){ if (x.active && x.free) draft[x.id] = x.free; });
-    else if (a==='clr') { draft = {}; msg = ''; }
-    else if (a==='go') return apply();
-    msg = ''; draw();
-  });
-  function apply(){
-    var list = slots.filter(function(s){ return draft[s.id]; });
-    if (!list.length || busy) return;
-    var txt = list.map(function(s){ return s.label+': '+s.amount+' → '+(s.amount+draft[s.id])+' ('+(draft[s.id]>0?'+':'')+draft[s.id]+')'; }).join('\n');
-    if (!confirm('Send this to the vending cloud?\n\n'+txt)) return;
-    busy = true; msg = ''; draw();
-    fetch('/api/replenish', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ token: tok(), changes: list.map(function(s){ return { id: s.id, delta: draft[s.id] }; }) }) })
-    .then(function(r){ return r.json(); }).then(function(d){
-      if (d.error) { msg = '<div class="note bad">'+esc(d.error)+'</div>'; }
-      else {
-        var okn = d.results.filter(function(x){return x.ok;}).length;
-        msg = '<div class="note '+(d.ok?'ok':'bad')+'">'+(d.ok ? 'Done: '+okn+' slot'+(okn>1?'s':'')+' updated.' : okn+' updated, then stopped: '+esc((d.results.filter(function(x){return !x.ok;})[0]||{}).msg||'error')+'. '+d.skipped+' not sent.')+'</div>';
-        draft = {};
-      }
-    }).catch(function(e){ msg = '<div class="note bad">'+esc(e.message)+'</div>'; })
-    .then(function(){ busy = false; load(); if (window.reloadHistory) setTimeout(window.reloadHistory, 1500); });
-  }
-  function load(){
-    U.getJSON('/api/slots').then(function(d){
-      if (d.error) throw new Error(d.error);
-      slots = d.slots; draw();
-    }).catch(function(e){ box.innerHTML = '<div class="card"><div class="msg err">Could not load slots: '+esc(e.message)+'</div></div>'; });
-  }
-  draw(); load();
-})();
 </script>
 </body></html>

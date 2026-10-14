@@ -16,8 +16,8 @@
 <body>
 <div class="box"><div class="card">
   <img src="/logo.png" alt="Radwa">
-  <div class="title">Sales &amp; Refill are locked</div>
-  <div class="sub">The Monitor page stays open to everyone. Enter the PIN to see Sales and Refill.</div>
+  <div class="title" id="ttl">This page is locked</div>
+  <div class="sub" id="sb">Monitor and Planogram stay open to everyone. Enter your PIN to continue.</div>
   <input id="pin" type="password" inputmode="text" autocomplete="current-password" placeholder="PIN" autofocus>
   <div class="err" id="err"></div>
   <button class="btn green" id="go">Unlock</button>
@@ -25,8 +25,9 @@
 </div></div>
 <script>
 (function(){
-  var q = new URLSearchParams(location.search).get('next') || '/sales';
-  if (q.charAt(0) !== '/' || q.charAt(1) === '/') q = '/sales';
+  var P = new URLSearchParams(location.search), q = P.get('next') || '/refill';
+  if (q.charAt(0) !== '/' || q.charAt(1) === '/') q = '/refill';
+  if (P.get('need') === 'admin') { document.getElementById('ttl').textContent = 'Admin PIN needed'; document.getElementById('sb').textContent = 'This page is for the admin. Enter the admin PIN.'; }
   var pin = document.getElementById('pin'), err = document.getElementById('err'), go = document.getElementById('go');
   function submit(){
     err.textContent = ''; go.disabled = true;

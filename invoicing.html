@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Radwa Vending – Cycles</title>
+<title>Radwa Vending – Invoicing</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 <style>
@@ -31,20 +31,19 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
 <body>
 <div id="hdr"></div>
 <div class="wrap" style="max-width:980px">
-  <div class="pills" id="tabs"></div>
   <div id="top"></div>
   <div class="card" id="newc" style="display:none"></div>
   <div class="card" id="detail" style="display:none"></div>
-  <div class="card"><div class="sec-h"><div class="sec-n" id="listn">1</div><span class="sec-t" id="listt">Stock requests</span></div><div id="list"><div class="msg">Loading…</div></div></div>
+  <div class="card"><div class="sec-h"><div class="sec-n">$</div><span class="sec-t">Sales settlements</span></div><div id="list"><div class="msg">Loading…</div></div></div>
 </div>
 <script src="/ui.js"></script>
 <script>
 (function(){
   var $ = function(i){ return document.getElementById(i); }, esc = RUI.esc;
-  var META = null, VIEW = (location.hash === '#sales') ? 'sales' : 'stock';
-  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Cloud matched', checked:'Sales checked', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
+  var META = null;
+  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Closed (cloud matched)', refill_batch:'Refill', checked:'Sales checked', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
   var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Check machine stock matches', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the settlement' };
-  RUI.header('cycles', { sub: 'Refill-to-invoice control' });
+  RUI.header('invoicing', { sub: 'Invoicing · admin · Dahban' });
 
   function api(method, url, body){
     return fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined })
@@ -64,116 +63,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
       return '<div class="stp'+cls+'">'+(cls===' ok'?'✓ ':'')+esc(LABEL[s])+'</div>';
     }).join('') + '</div>';
   }
-  function tabs(){
-    $('tabs').innerHTML = [['stock','1 · Stock requests'],['sales','2 · Sales &amp; invoicing']].map(function(t){
-      return '<a class="pill'+(VIEW===t[0]?' on':'')+'" href="#'+t[0]+'" data-v="'+t[0]+'" style="cursor:pointer">'+t[1]+'</a>';
-    }).join('');
-    [].forEach.call($('tabs').querySelectorAll('a'), function(a){ a.onclick = function(e){ e.preventDefault(); VIEW = a.getAttribute('data-v'); history.replaceState(null,'','#'+VIEW); $('newc').style.display='none'; $('detail').style.display='none'; render(); }; });
-  }
-  function render(){ tabs(); $('listn').textContent = VIEW==='stock'?'1':'2'; $('listt').textContent = VIEW==='stock'?'Stock requests':'Sales settlements'; $('list').innerHTML = '<div class="msg">Loading…</div>'; VIEW === 'stock' ? loadRequests() : loadSettlements(); }
-
-  // ═════════ SECTION 1: stock requests ═════════
-  function loadRequests(){
-    api('GET','/api/cycles').then(function(d){
-      var c = d.cycles, open = c.filter(function(x){ return x.stage !== 'cloud_updated' && x.stage !== 'cancelled'; });
-      var ready = c.filter(function(x){ return x.stage === 'cloud_updated' && !x.settlement_id; });
-      $('top').innerHTML = '<div class="stats"><div class="stat info"><div class="l">In progress</div><div class="v">'+open.length+'</div><div class="s">requesting, receiving or refilling</div></div>' +
-        '<div class="stat '+(ready.length?'warn':'good')+'"><div class="l">Finished, not invoiced</div><div class="v">'+ready.length+'</div><div class="s">ready for a sales settlement</div></div></div>' +
-        '<div><button class="btn green" id="newbtn">+ New stock request</button></div>';
-      $('newbtn').onclick = showNewRequest;
-      if (!c.length) { $('list').innerHTML = '<div class="msg">No stock requests yet. Press "New stock request" when you request stock in D365.</div>'; return; }
-      $('list').innerHTML = '<table class="t"><thead><tr><th>Request</th><th class="hide-s">Salesman</th><th>Stage</th><th>Invoice</th></tr></thead><tbody>' +
-        c.map(function(x){
-          var cls = x.stage === 'cancelled' ? 'x' : x.stage === 'cloud_updated' ? 'done' : x.stage === 'issued' ? 'wait' : 'go';
-          var inv = x.stage === 'cancelled' ? '—' : x.vend_settlements ? '<span class="tag done">'+esc(x.vend_settlements.settlement_no)+'</span>' : (x.stage === 'cloud_updated' ? '<span class="tag wait">Not yet</span>' : '—');
-          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+' · '+fdt(x.issued_at)+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+cls+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td>'+inv+'</td></tr>';
-        }).join('') + '</tbody></table>';
-      [].forEach.call(document.querySelectorAll('tr.cl'), function(r){ r.onclick = function(){ openRequest(r.getAttribute('data-id')); }; });
-    }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
-  }
-
-  function showNewRequest(){
-    $('detail').style.display = 'none';
-    $('newc').innerHTML = '<div class="msg">Reading live stock from the machine…</div>'; $('newc').style.display = '';
-    api('GET','/api/cycles/live').then(function(r){ return r.live; }, function(){ return null; }).then(function(live){
-      $('newc').innerHTML = '<div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Request stock (D365)</span></div>' +
-        '<div class="row2"><div><label class="lb">Salesman</label><input class="in" id="n_s" autocomplete="off"></div><div><label class="lb">D365 request / issue reference</label><input class="in" id="n_r" autocomplete="off"></div></div>' +
-        '<label class="lb">Quantity to request (units)</label>' +
-        (live ? '<div style="font-size:12px;color:#78716c;margin-bottom:4px">Prefilled with the free space in the machine right now. Change as needed.</div>' : '<div style="font-size:12px;color:#be123c;margin-bottom:4px">Machine cloud not reachable, so live stock is not shown.</div>') +
-        META.products.map(function(p){
-          var l = live && live[p.code];
-          return '<div class="pq"><span>'+esc(p.emoji)+' <b>'+esc(p.code)+'</b> '+esc(p.name)+(l?'<div style="font-size:11px;color:#78716c">In machine now: <b>'+l.stock+'</b> of '+l.capacity+' · free space '+l.free+'</div>':'')+'</span><input class="in nq" data-c="'+esc(p.code)+'" type="number" min="0" max="999" inputmode="numeric" placeholder="0" value="'+(l && l.free > 0 ? l.free : '')+'"></div>';
-        }).join('') +
-        '<label class="lb">Notes (optional)</label><textarea class="in" id="n_n"></textarea>' +
-        '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn green" id="n_go">Create request</button><button class="btn" id="n_x">Cancel</button></div><div id="n_out"></div>';
-      $('n_x').onclick = function(){ $('newc').style.display = 'none'; };
-      $('n_go').onclick = function(){
-        var lines = [].map.call(document.querySelectorAll('.nq'), function(i){ return { product_code: i.getAttribute('data-c'), qty: Number(i.value) }; }).filter(function(l){ return l.qty > 0; });
-        var b = $('n_go'); b.disabled = true;
-        api('POST','/api/cycles',{ salesman:$('n_s').value, d365_issue_ref:$('n_r').value, notes:$('n_n').value, lines:lines })
-          .then(function(r){ $('newc').style.display = 'none'; loadRequests(); openRequest(r.id); })
-          .catch(function(e){ $('n_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; })
-          .then(function(){ b.disabled = false; });
-      };
-      $('newc').scrollIntoView({behavior:'smooth'});
-    });
-  }
-
-  function openRequest(id){
-    $('newc').style.display = 'none';
-    api('GET','/api/cycles/'+id).then(function(c){
-      var cancelled = c.stage === 'cancelled';
-      var nxt = cancelled ? null : nextIn(META.stages, c.stage);
-      var recon = {}; (c.recon || []).forEach(function(r){ recon[r.product_code] = r; });
-      var hasRecon = !!c.recon;
-      var lines = '<div style="overflow-x:auto"><table class="t"><thead><tr><th>Product</th><th>At request</th><th>Req.</th><th>Recv.</th><th>Refill</th>' + (hasRecon ? '<th>Sold</th><th>Expect</th><th>Live</th>' : '') + '</tr></thead><tbody>' +
-        c.vend_cycle_lines.map(function(l){
-          var r = recon[l.product_code] || {};
-          var cell = hasRecon ? '<td>'+dash(r.sold_since)+'</td><td>'+dash(r.expected)+'</td><td>'+(r.live==null?'—':('<b class="'+(r.diff==null?'':r.diff===0?'gapok':'gapbad')+'">'+r.live+(r.diff?' ('+(r.diff>0?'+':'')+r.diff+')':'')+'</b>'))+'</td>' : '';
-          return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+dash(l.stock_before)+'</td><td>'+l.qty_issued+'</td><td>'+dash(l.qty_received)+'</td><td>'+dash(l.qty_refilled)+'</td>'+cell+'</tr>';
-        }).join('') + '</tbody></table></div>' +
-        (hasRecon ? '<div style="font-size:11px;color:#78716c;margin-top:6px">At request = units the machine cloud showed when this request was created. Expect = at request + refilled − sold since. Live = what the machine cloud shows now. Red means the machine does not match this request. Every product is tracked, even if you did not request it.</div>' : '') +
-        (c.recon_error ? '<div class="res bad">Live stock not available: '+esc(c.recon_error)+'</div>' : '');
-      var act = '';
-      if (nxt) {
-        if (nxt === 'received' || nxt === 'refilled') {
-          var base = nxt === 'received' ? 'qty_issued' : 'qty_received';
-          act += '<label class="lb">Quantity '+(nxt==='received'?'received':'actually refilled')+' (change only if different)</label>' +
-            c.vend_cycle_lines.map(function(l){ return '<div class="pq"><span><b>'+esc(l.product_code)+'</b> '+esc(pname(l.product_code))+'</span><input class="in aq" data-c="'+esc(l.product_code)+'" type="number" min="0" max="999" inputmode="numeric" value="'+(l[base]==null?0:l[base])+'"></div>'; }).join('');
-        }
-        if (nxt === 'refilled') act += '<div style="font-size:12px;color:#78716c;margin-top:8px">Then record the same quantities on the machine in the <a href="/refill">Refill</a> tab.</div>';
-        if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Compares the live machine stock with this request. If it differs, fix it in the <a href="/refill">Refill</a> tab, or write a note to confirm anyway.</div>';
-        act += '<label class="lb">Note'+(nxt==='cloud_updated'?' (required if stock differs)':' (optional)')+'</label><input class="in" id="a_note" autocomplete="off">' +
-          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn green" id="a_go">'+esc(NEXT_BTN[nxt])+'</button>'+(c.settlement_id?'':'<button class="btn" id="a_cx">Cancel this request</button>')+'</div><div id="a_out"></div>';
-      } else if (!cancelled && !c.settlement_id) {
-        act = '<div class="res ok" style="margin-top:12px">Stock part finished. Include it in a settlement on the <a href="#sales" id="gosales">Sales &amp; invoicing</a> tab.</div>' +
-              '<div style="margin-top:10px"><button class="btn" id="a_cx">Cancel this request</button></div><div id="a_out"></div>';
-      }
-      var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
-      $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
-        '<div style="font-size:12px;color:#78716c">D365 '+esc(c.d365_issue_ref||'—')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+(c.vend_settlements?' · Invoiced in <b>'+esc(c.vend_settlements.settlement_no)+'</b>':'')+'</div>' +
-        stepRow(META.stages, c.stage) + lines +
-        (act ? '<div style="margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3">'+(nxt?'<b style="font-size:13px">Next step: '+esc(LABEL[nxt])+'</b>':'')+act+'</div>' : '') +
-        '<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
-      $('detail').style.display = '';
-      $('d_x').onclick = function(){ $('detail').style.display = 'none'; };
-      if ($('gosales')) $('gosales').onclick = function(e){ e.preventDefault(); VIEW = 'sales'; history.replaceState(null,'','#sales'); $('detail').style.display='none'; render(); };
-      if ($('a_go')) $('a_go').onclick = function(){
-        var body = { to: nxt, note: $('a_note').value };
-        var q = {}; [].forEach.call(document.querySelectorAll('.aq'), function(i){ q[i.getAttribute('data-c')] = Number(i.value); });
-        if (Object.keys(q).length) body.qty = q;
-        sendReq(id, body, $('a_go'));
-      };
-      if ($('a_cx')) $('a_cx').onclick = function(){ var why = prompt('Reason for cancelling this request?'); if (why) sendReq(id, { to:'cancelled', note: why }, $('a_cx')); };
-      $('detail').scrollIntoView({behavior:'smooth'});
-    }).catch(function(e){ $('detail').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; $('detail').style.display = ''; });
-  }
-  function sendReq(id, body, btn){
-    btn.disabled = true;
-    api('POST','/api/cycles/'+id+'/advance', body)
-      .then(function(){ loadRequests(); openRequest(id); })
-      .catch(function(e){ $('a_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; btn.disabled = false; });
-  }
+  function render(){ $('list').innerHTML = '<div class="msg">Loading…</div>'; loadSettlements(); }
 
   // ═════════ SECTION 2: sales & invoicing ═════════
   function loadSettlements(){
@@ -200,7 +90,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
     $('newc').innerHTML = '<div class="msg">Loading finished requests…</div>'; $('newc').style.display = '';
     api('GET','/api/settlements/prepare').then(function(p){
       var av = p.available;
-      if (!av.length) { $('newc').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">New settlement</span></div><div class="msg">No finished stock requests are waiting. A request must reach "Cloud matched" first.</div><button class="btn" id="n_x">Close</button>'; $('n_x').onclick = function(){ $('newc').style.display='none'; }; return; }
+      if (!av.length) { $('newc').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">New settlement</span></div><div class="msg">No finished stock requests are waiting. A salesman must close the request on the Refill tab first.</div><button class="btn" id="n_x">Close</button>'; $('n_x').onclick = function(){ $('newc').style.display='none'; }; return; }
       var edited = false;
       $('newc').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">New settlement: invoice finished requests together</span></div>' +
         '<label class="lb">Stock requests to include</label>' +
@@ -288,7 +178,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
 
   api('GET','/api/cycles/meta').then(function(m){
     META = m;
-    if (!m.configured) { tabs(); $('top').innerHTML = '<div class="stat warn"><div class="l">Not switched on yet</div><div class="v" style="font-size:16px">Cycle records need two settings in Render</div><div class="s">Add SUPABASE_URL and SUPABASE_SERVICE_KEY under Environment, then save.</div></div>'; $('list').innerHTML = ''; return; }
+    if (!m.configured) { $('top').innerHTML = '<div class="stat warn"><div class="l">Not switched on yet</div><div class="v" style="font-size:16px">Cycle records need two settings in Render</div><div class="s">Add SUPABASE_URL and SUPABASE_SERVICE_KEY under Environment, then save.</div></div>'; $('list').innerHTML = ''; return; }
     render();
   }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
 })();

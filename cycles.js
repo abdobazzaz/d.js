@@ -8,7 +8,7 @@ const STAGES = ['issued', 'received', 'refilled', 'cloud_updated'];      // stoc
 const S_STAGES = ['checked', 'paid', 'invoiced', 'closed'];              // settlement
 const S_TS = { paid: 'paid_at', invoiced: 'invoiced_at', closed: 'closed_at' };
 
-module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCode, getSlots }) {
+module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCode, getSlots, applyToMachine, machineLock, roleName }) {
   const URL_ = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const KEY = process.env.SUPABASE_SERVICE_KEY || '';
   const configured = () => !!(URL_ && KEY);
@@ -29,6 +29,7 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
 
   const need = (req, res, next) => configured() ? next() : res.status(503).json({ error: 'Cycle records are not switched on yet: add SUPABASE_URL and SUPABASE_SERVICE_KEY in Render → Environment.' });
   const codes = () => CFG.products.map(p => p.code);
+  const who = req => (roleName ? roleName(req) : 'dashboard');
   const intIn = (v, lo, hi) => { const n = Number(v); return Number.isInteger(n) && n >= lo && n <= hi ? n : null; };
   const idOf = req => { const n = Number(req.params.id); return Number.isInteger(n) && n > 0 ? n : null; };
   const chinaTime = iso => new Date(new Date(iso).getTime() + 8 * 3600000).toISOString().substring(0, 19).replace('T', ' ');
@@ -154,6 +155,55 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
+  // ── refill against a received request: the salesman taps + on the planogram; writes to the machine and counts the units ──
+  app.get('/api/refill/slots', async (req, res) => {
+    try { res.json({ slots: await getSlots() }); } catch (e) { res.status(502).json({ error: e.message }); }
+  });
+  const REFILL_SEEN = new Map();
+  app.post('/api/cycles/:id/refill', need, async (req, res) => {
+    const id = idOf(req); if (!id) return res.status(400).json({ error: 'Bad id' });
+    const token = String(req.body?.token || '');
+    if (token && REFILL_SEEN.has(token)) return res.json({ ...REFILL_SEEN.get(token), duplicate: true });
+    const changes = Array.isArray(req.body?.changes) ? req.body.changes : [];
+    if (!changes.length || changes.length > 64) return res.status(400).json({ error: 'Nothing to refill' });
+    try {
+      const out = await machineLock(async () => {
+        const rows = await sb('GET', 'vend_cycles', { query: `?id=eq.${id}&select=*,vend_cycle_lines(*)` });
+        if (!rows.length) { const e = new Error('Not found'); e.code = 404; throw e; }
+        const cy = rows[0];
+        if (cy.stage !== 'received') { const e = new Error(cy.stage === 'issued' ? 'Confirm receipt of the stock first' : 'This request is not open for refilling (stage: ' + cy.stage + ')'); e.code = 409; throw e; }
+        const byId = new Map((await getSlots()).map(s => [s.id, s]));
+        const left = {};
+        for (const l of cy.vend_cycle_lines) left[l.product_code] = (l.qty_received || 0) - (l.qty_refilled || 0);
+        const plan = [], seen = new Set(), add = {};
+        for (const c of changes) {
+          const s = byId.get(String(c.id)), d = Number(c.delta);
+          const bad = m => { const e = new Error(m); e.code = 400; throw e; };
+          if (!s) bad('Unknown slot ' + c.id);
+          if (seen.has(s.id)) bad('Slot ' + s.label + ' listed twice'); seen.add(s.id);
+          if (!Number.isInteger(d) || d < 1) continue;
+          if (!s.active) bad('Slot ' + s.label + ' is not active and cannot be refilled');
+          if (s.disabled) bad('Slot ' + s.label + ' is disabled on the platform');
+          if (!s.sku) bad('Slot ' + s.label + ' has no product');
+          if (s.amount + d > s.vol) bad(`Slot ${s.label}: ${s.amount} +${d} is more than its capacity ${s.vol}`);
+          add[s.sku] = (add[s.sku] || 0) + d;
+          if (add[s.sku] > (left[s.sku] || 0)) bad(`${s.sku}: only ${left[s.sku] || 0} unit(s) still to refill from this request, you are adding ${add[s.sku]}`);
+          plan.push({ s, delta: d, after: s.amount + d });
+        }
+        if (!plan.length) { const e = new Error('Nothing to refill'); e.code = 400; throw e; }
+        const results = await applyToMachine(plan);
+        const done = {};
+        results.forEach((r, i) => { if (r.ok) done[plan[i].s.sku] = (done[plan[i].s.sku] || 0) + plan[i].delta; });
+        for (const l of cy.vend_cycle_lines) if (done[l.product_code]) await sb('PATCH', 'vend_cycle_lines', { query: `?id=eq.${l.id}`, body: { qty_refilled: (l.qty_refilled || 0) + done[l.product_code] } });
+        const total = Object.values(done).reduce((a, b) => a + b, 0);
+        if (total) await sb('POST', 'vend_cycle_events', { body: { cycle_id: id, stage: 'refill_batch', actor: who(req), note: 'Refilled +' + total, payload: { slots: results.map((r, i) => ({ label: r.label, delta: r.delta, before: r.before, after: r.after, ok: r.ok })), by_product: done } } });
+        return { ok: results.every(r => r.ok) && results.length === plan.length, results, added: total, skipped: plan.length - results.length };
+      });
+      if (token) { REFILL_SEEN.set(token, out); setTimeout(() => REFILL_SEEN.delete(token), 600000); }
+      res.status(out.ok ? 200 : 502).json(out);
+    } catch (e) { res.status(e.code && e.code < 600 ? e.code : 500).json({ error: e.message }); }
+  });
+
   app.post('/api/cycles/:id/advance', need, async (req, res) => {
     const id = idOf(req); if (!id) return res.status(400).json({ error: 'Bad id' });
     const b = req.body || {};
@@ -187,14 +237,19 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
         return null;
       };
       if (to === 'received') { const err = qtyMap('qty_received', 'qty_issued'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates.slice(); }
-      if (to === 'refilled') { const err = qtyMap('qty_refilled', 'qty_received'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates.slice(); }
+      if (to === 'refilled') {
+        // quantities come from the planogram refills already recorded on the request
+        const short = lines.filter(l => (l.qty_refilled || 0) < (l.qty_received || 0));
+        if (short.length && !note) return res.status(409).json({ error: 'Not everything received was refilled (' + short.map(l => `${l.product_code} ${l.qty_refilled || 0} of ${l.qty_received || 0}`).join(', ') + '). Refill the rest on the planogram, or write the reason in the note.' });
+        payload.lines = lines.map(l => ({ product_code: l.product_code, qty_received: l.qty_received, qty_refilled: l.qty_refilled || 0 }));
+      }
       if (to === 'cloud_updated') {
         let live;
         try { live = await liveStock(); } catch (e) { return res.status(502).json({ error: 'Cannot read the machine cloud to compare stock: ' + e.message }); }
         const sales = await salesBetween(cy.issued_at);
         const rec = reconcile(lines, live, sales.sold);
         const bad = rec.filter(r => r.diff != null && r.diff !== 0);
-        if (bad.length && !note) return res.status(409).json({ error: 'Machine stock does not match this request: ' + bad.map(r => `${r.product_code} shows ${r.live}, expected ${r.expected}`).join('; ') + '. Fix it in the Refill tab, or write a note to confirm anyway.', mismatch: bad });
+        if (bad.length && !note) return res.status(409).json({ error: 'Machine stock does not match this request: ' + bad.map(r => `${r.product_code} shows ${r.live}, expected ${r.expected}`).join('; ') + '. Check the Planogram. An admin can correct a slot there, or write a note to confirm anyway.', mismatch: bad });
         for (const r of rec) lineUpdates.push({ product_code: r.product_code, stock_after: r.live });
         payload.reconcile = rec;
       }
@@ -206,7 +261,7 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
         const { product_code, ...fields } = u;
         await sb('PATCH', 'vend_cycle_lines', { query: `?cycle_id=eq.${id}&product_code=eq.${encodeURIComponent(product_code)}`, body: fields });
       }
-      await sb('POST', 'vend_cycle_events', { body: { cycle_id: id, stage: to, actor: 'dashboard', note, payload } });
+      await sb('POST', 'vend_cycle_events', { body: { cycle_id: id, stage: to, actor: who(req), note, payload } });
       res.json({ ok: true, stage: to });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -278,7 +333,7 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
         await sb('DELETE', 'vend_settlements', { query: `?id=eq.${st.id}` }).catch(() => {});   // lines go with it; requests unlink automatically
         throw e;
       }
-      await sb('POST', 'vend_settlement_events', { body: { settlement_id: st.id, stage: 'checked', actor: 'dashboard', note: notes || null, payload: { request_ids: ids, from: from.toISOString(), to: to.toISOString(), sold: sales.sold, amount: sales.amount } } });
+      await sb('POST', 'vend_settlement_events', { body: { settlement_id: st.id, stage: 'checked', actor: who(req), note: notes || null, payload: { request_ids: ids, from: from.toISOString(), to: to.toISOString(), sold: sales.sold, amount: sales.amount } } });
       res.json({ ok: true, id: st.id, settlement_no: st.settlement_no });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -295,7 +350,7 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
       const upd = await sb('PATCH', 'vend_settlements', { query: `?id=eq.${id}&stage=eq.checked`, body: { actual_sold_units: sales.units, actual_amount: sales.amount, checked_at: new Date().toISOString() } });
       if (!upd.length) return res.status(409).json({ error: 'Someone else just changed this settlement. Reload.' });
       for (const c of codes()) await sb('PATCH', 'vend_settlement_lines', { query: `?settlement_id=eq.${id}&product_code=eq.${encodeURIComponent(c)}`, body: { qty_sold: sales.sold[c] || 0 } });
-      await sb('POST', 'vend_settlement_events', { body: { settlement_id: id, stage: 'checked', actor: 'dashboard', note: 'Sales re-read', payload: { sold: sales.sold, amount: sales.amount } } });
+      await sb('POST', 'vend_settlement_events', { body: { settlement_id: id, stage: 'checked', actor: who(req), note: 'Sales re-read', payload: { sold: sales.sold, amount: sales.amount } } });
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
@@ -335,7 +390,7 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
       const upd = await sb('PATCH', 'vend_settlements', { query: `?id=eq.${id}&stage=eq.${st.stage}`, body: patch });
       if (!upd.length) return res.status(409).json({ error: 'Someone else just changed this settlement. Reload and check.' });
       if (to === 'cancelled') await sb('PATCH', 'vend_cycles', { query: `?settlement_id=eq.${id}`, body: { settlement_id: null } });   // requests become available again
-      await sb('POST', 'vend_settlement_events', { body: { settlement_id: id, stage: to, actor: 'dashboard', note, payload } });
+      await sb('POST', 'vend_settlement_events', { body: { settlement_id: id, stage: to, actor: who(req), note, payload } });
       res.json({ ok: true, stage: to });
     } catch (e) { res.status(500).json({ error: e.message }); }
   });

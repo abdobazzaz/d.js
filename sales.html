@@ -2,7 +2,7 @@
 <html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Radwa Vending – Sales</title>
+<title>Radwa Vending – Sales History</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
 </head>
@@ -14,7 +14,7 @@
 (function(){
   var U = RUI, esc = U.esc;
   var money = function(n){ return Number(n||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}); };
-  var actions = U.header('sales', { sub: 'Sales report · Dahban · Machine 203617400' });
+  var actions = U.header('sales', { sub: 'Sales history · Dahban · Machine 203617400' });
   var rpHost = document.createElement('div');
   var xl = document.createElement('button'); xl.className = 'btn green'; xl.textContent = '⬇ Excel';
   actions.appendChild(rpHost); actions.appendChild(xl);
