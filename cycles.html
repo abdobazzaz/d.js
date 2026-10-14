@@ -126,13 +126,13 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
       var nxt = cancelled ? null : nextIn(META.stages, c.stage);
       var recon = {}; (c.recon || []).forEach(function(r){ recon[r.product_code] = r; });
       var hasRecon = !!c.recon;
-      var lines = '<div style="overflow-x:auto"><table class="t"><thead><tr><th>Product</th><th>Before</th><th>Req.</th><th>Recv.</th><th>Refill</th>' + (hasRecon ? '<th>Sold</th><th>Expect</th><th>Live</th>' : '') + '</tr></thead><tbody>' +
+      var lines = '<div style="overflow-x:auto"><table class="t"><thead><tr><th>Product</th><th>At request</th><th>Req.</th><th>Recv.</th><th>Refill</th>' + (hasRecon ? '<th>Sold</th><th>Expect</th><th>Live</th>' : '') + '</tr></thead><tbody>' +
         c.vend_cycle_lines.map(function(l){
           var r = recon[l.product_code] || {};
           var cell = hasRecon ? '<td>'+dash(r.sold_since)+'</td><td>'+dash(r.expected)+'</td><td>'+(r.live==null?'—':('<b class="'+(r.diff==null?'':r.diff===0?'gapok':'gapbad')+'">'+r.live+(r.diff?' ('+(r.diff>0?'+':'')+r.diff+')':'')+'</b>'))+'</td>' : '';
           return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+dash(l.stock_before)+'</td><td>'+l.qty_issued+'</td><td>'+dash(l.qty_received)+'</td><td>'+dash(l.qty_refilled)+'</td>'+cell+'</tr>';
         }).join('') + '</tbody></table></div>' +
-        (hasRecon ? '<div style="font-size:11px;color:#78716c;margin-top:6px">Expect = machine stock when requested + refilled − sold since. Live = what the machine cloud shows now. Red means the stock does not match this request.</div>' : '') +
+        (hasRecon ? '<div style="font-size:11px;color:#78716c;margin-top:6px">At request = units the machine cloud showed when this request was created. Expect = at request + refilled − sold since. Live = what the machine cloud shows now. Red means the machine does not match this request. Every product is tracked, even if you did not request it.</div>' : '') +
         (c.recon_error ? '<div class="res bad">Live stock not available: '+esc(c.recon_error)+'</div>' : '');
       var act = '';
       if (nxt) {

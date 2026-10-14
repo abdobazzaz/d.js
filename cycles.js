@@ -93,6 +93,26 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
       if (!rows.length) return res.status(404).json({ error: 'Not found' });
       const cy = rows[0];
       cy.vend_cycle_events.sort((a, b) => a.at.localeCompare(b.at));
+      // Older requests may lack the stock-at-request snapshot or some products. Before anything is refilled,
+      // stock at request time = live stock now + sold since the request, so it can be rebuilt safely.
+      if (['issued', 'received'].includes(cy.stage)) {
+        const missing = codes().filter(c => !cy.vend_cycle_lines.some(l => l.product_code === c));
+        const nullBefore = cy.vend_cycle_lines.filter(l => l.stock_before == null);
+        if (missing.length || nullBefore.length) {
+          try {
+            const [live, sales] = await Promise.all([liveStock(), salesBetween(cy.issued_at)]);
+            const before = c => live[c] ? live[c].stock + (sales.sold[c] || 0) : null;
+            for (const l of nullBefore) {
+              const v = before(l.product_code);
+              if (v == null) continue;
+              await sb('PATCH', 'vend_cycle_lines', { query: `?id=eq.${l.id}&stock_before=is.null`, body: { stock_before: v } });
+              l.stock_before = v;
+            }
+            if (missing.length) cy.vend_cycle_lines.push(...await sb('POST', 'vend_cycle_lines', { body: missing.map(c => ({ cycle_id: cy.id, product_code: c, qty_issued: 0, stock_before: before(c) })) }));
+          } catch (e) { /* machine cloud unreachable: try again next time */ }
+        }
+      }
+      cy.vend_cycle_lines.sort((a, b) => a.product_code.localeCompare(b.product_code));
       cy.recon = null;
       if (cy.stage !== 'cancelled') {
         try {
@@ -111,13 +131,14 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
     const notes = String(b.notes || '').trim().slice(0, 500);
     if (!salesman) return res.status(400).json({ error: 'Enter the salesman' });
     if (!ref) return res.status(400).json({ error: 'Enter the D365 issue reference' });
-    const lines = [];
+    const want = {};
     for (const l of Array.isArray(b.lines) ? b.lines : []) {
       const q = intIn(l.qty, 1, 999);
-      if (!codes().includes(l.product_code) || q === null) continue;
-      lines.push({ product_code: l.product_code, qty_issued: q });
+      if (codes().includes(l.product_code) && q !== null) want[l.product_code] = q;
     }
-    if (!lines.length) return res.status(400).json({ error: 'Enter at least one product quantity' });
+    if (!Object.keys(want).length) return res.status(400).json({ error: 'Enter at least one product quantity' });
+    // Every product gets a line (0 if not requested) so the whole machine is tracked and compared with live stock.
+    const lines = codes().map(c => ({ product_code: c, qty_issued: want[c] || 0 }));
     try {
       let cycle;
       for (let i = 0; i < 3 && !cycle; i++) {
