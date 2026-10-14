@@ -1786,7 +1786,7 @@ app.post('/api/session', async (req, res) => {
 
 app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));
 app.get('/cycles', (req, res) => res.sendFile(path.join(__dirname, 'cycles.html')));
-require('./cycles')(app, { CFG, getOrdersCached, getProductCode });
+require('./cycles')(app, { CFG, getOrdersCached, getProductCode, getSlots });
 app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
 app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
 app.get('/logo.png', (req, res) => res.sendFile(path.join(__dirname, 'New Radwa Logo with text- trasperant.png')));

@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 const STAGES = ['issued', 'received', 'refilled', 'cloud_updated', 'checked', 'paid', 'invoiced', 'closed'];
 const STAGE_TS = { received: 'received_at', refilled: 'refilled_at', cloud_updated: 'cloud_updated_at', checked: 'checked_at', paid: 'paid_at', invoiced: 'invoiced_at', closed: 'closed_at' };
 
-module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCode }) {
+module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCode, getSlots }) {
   const URL_ = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
   const KEY = process.env.SUPABASE_SERVICE_KEY || '';
   const configured = () => !!(URL_ && KEY);
@@ -30,6 +30,44 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
   const idOf = req => { const n = Number(req.params.id); return Number.isInteger(n) && n > 0 ? n : null; };
   const chinaTime = iso => new Date(new Date(iso).getTime() + 8 * 3600000).toISOString().substring(0, 19).replace('T', ' ');
 
+  // Live stock in the machine, per product, from the machine cloud.
+  async function liveStock() {
+    const m = {};
+    for (const sl of await getSlots()) {
+      if (!sl.sku || sl.disabled) continue;
+      const o = m[sl.sku] || (m[sl.sku] = { stock: 0, capacity: 0, free: 0 });
+      o.stock += sl.amount; o.capacity += sl.vol; o.free += sl.free;
+    }
+    return m;
+  }
+  // Completed orders paid since a moment, per product.
+  async function salesSince(iso) {
+    const since = chinaTime(iso);
+    const sold = {}; let amount = 0, units = 0;
+    for (const o of await getOrdersCached()) {
+      if (o.order_status != 5 || (o.pay_time || '') < since) continue;
+      const g = (o.goods && o.goods[0]) || {};
+      const p = getProductCode(g.goods_name || '');
+      amount += parseFloat(o.order_amount || 0); units++;
+      if (p) sold[p.code] = (sold[p.code] || 0) + 1;
+    }
+    return { sold, amount, units, since };
+  }
+  // Expected machine stock = stock when requested + refilled - sold since then.
+  function reconcile(lines, live, sold) {
+    return lines.map(l => {
+      if (l.stock_before == null) return { product_code: l.product_code, expected: null, live: live ? (live[l.product_code]?.stock ?? null) : null, diff: null, sold_since: sold[l.product_code] || 0 };
+      const soldN = sold[l.product_code] || 0;
+      const expected = l.stock_before + (l.qty_refilled || 0) - soldN;
+      const lv = live ? (live[l.product_code]?.stock ?? null) : null;
+      return { product_code: l.product_code, expected, live: lv, diff: lv == null ? null : lv - expected, sold_since: soldN };
+    });
+  }
+
+  app.get('/api/cycles/live', need, async (req, res) => {
+    try { res.json({ live: await liveStock() }); } catch (e) { res.status(502).json({ error: 'Machine cloud not reachable: ' + e.message }); }
+  });
+
   app.get('/api/cycles/meta', (req, res) => res.json({
     configured: configured(), stages: STAGES,
     products: CFG.products.map(p => ({ code: p.code, name: p.name, emoji: p.emoji || '' })),
@@ -47,8 +85,16 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
     try {
       const rows = await sb('GET', 'vend_cycles', { query: `?id=eq.${id}&select=*,vend_cycle_lines(*),vend_cycle_events(*)` });
       if (!rows.length) return res.status(404).json({ error: 'Not found' });
-      rows[0].vend_cycle_events.sort((a, b) => a.at.localeCompare(b.at));
-      res.json(rows[0]);
+      const cy = rows[0];
+      cy.vend_cycle_events.sort((a, b) => a.at.localeCompare(b.at));
+      cy.recon = null;
+      if (!['closed', 'cancelled', 'checked', 'paid', 'invoiced'].includes(cy.stage)) {
+        try {
+          const [live, sales] = await Promise.all([liveStock(), salesSince(cy.issued_at)]);
+          cy.recon = reconcile(cy.vend_cycle_lines, live, sales.sold);
+        } catch (e) { cy.recon_error = e.message; }
+      }
+      res.json(cy);
     } catch (e) { res.status(500).json({ error: e.message }); }
   });
 
@@ -75,7 +121,8 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
         catch (e) { if (!/23505|duplicate/i.test(e.message)) throw e; }
       }
       if (!cycle) throw new Error('Could not allocate a cycle number, try again');
-      await sb('POST', 'vend_cycle_lines', { body: lines.map(l => ({ ...l, cycle_id: cycle.id })) });
+      let live = null; try { live = await liveStock(); } catch (e) { /* machine cloud unreachable: snapshot stays empty */ }
+      await sb('POST', 'vend_cycle_lines', { body: lines.map(l => ({ ...l, cycle_id: cycle.id, stock_before: live && live[l.product_code] ? live[l.product_code].stock : null })) });
       await sb('POST', 'vend_cycle_events', { body: { cycle_id: cycle.id, stage: 'issued', actor: salesman, note: `D365 issue ${ref}`, payload: { lines } } });
       res.json({ ok: true, id: cycle.id, cycle_no: cycle.cycle_no });
     } catch (e) { res.status(500).json({ error: e.message }); }
@@ -117,6 +164,16 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
 
       if (to === 'received') { const err = qtyMap('qty_received', 'qty_issued'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates; }
       if (to === 'refilled') { const err = qtyMap('qty_refilled', 'qty_received'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates; }
+      if (to === 'cloud_updated') {
+        let live;
+        try { live = await liveStock(); } catch (e) { return res.status(502).json({ error: 'Cannot read the machine cloud to compare stock: ' + e.message }); }
+        const sales = await salesSince(cy.issued_at);
+        const rec = reconcile(lines, live, sales.sold);
+        const bad = rec.filter(r => r.diff != null && r.diff !== 0);
+        if (bad.length && !note) return res.status(409).json({ error: 'Machine stock does not match this cycle: ' + bad.map(r => `${r.product_code} shows ${r.live}, expected ${r.expected}`).join('; ') + '. Fix it in the Refill tab, or write a note to confirm anyway.', mismatch: bad });
+        for (const r of rec) lineUpdates.push({ product_code: r.product_code, stock_after: r.live });
+        payload.reconcile = rec;
+      }
       if (to === 'checked') {
         const since = chinaTime(cy.refilled_at);
         const done = (await getOrdersCached()).filter(o => o.order_status == 5 && (o.pay_time || '') >= since);

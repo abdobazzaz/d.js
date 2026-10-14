@@ -34,15 +34,16 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
   <div id="top"></div>
   <div class="card" id="newc" style="display:none"></div>
   <div class="card" id="detail" style="display:none"></div>
-  <div class="card"><div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Cycles</span></div><div id="list"><div class="msg">Loading…</div></div></div>
+  <div class="card"><div class="sec-h"><div class="sec-n">1</div><span class="sec-t">All cycles</span></div><div id="list"><div class="msg">Loading…</div></div></div>
 </div>
 <script src="/ui.js"></script>
 <script>
 (function(){
   var $ = function(i){ return document.getElementById(i); }, esc = RUI.esc;
   var META = null, OPEN = null;
-  var LABEL = { issued:'Issued (D365)', received:'Received', refilled:'Refilled', cloud_updated:'Cloud updated', checked:'Visit checked', paid:'Paid (POS)', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
-  var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Confirm cloud updated', checked:'Run the visit check', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the cycle' };
+  var SEC1 = ['issued','received','refilled','cloud_updated'], SEC2 = ['checked','paid','invoiced','closed'];
+  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Cloud matched', checked:'Sales check', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
+  var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Check machine stock matches', checked:'Run the sales check', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the cycle' };
   RUI.header('cycles', { sub: 'Refill-to-invoice control' });
 
   function api(method, url, body){
@@ -51,24 +52,27 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
   }
   function nextOf(stage){ var i = META.stages.indexOf(stage); return i >= 0 ? META.stages[i+1] : null; }
   function tagCls(s){ return s === 'closed' ? 'done' : s === 'cancelled' ? 'x' : s === 'issued' ? 'wait' : 'go'; }
+  function section(s){ return SEC1.indexOf(s) >= 0 ? 'Stock' : SEC2.indexOf(s) >= 0 ? 'Sales & payment' : '—'; }
   function fdt(iso){ return iso ? new Date(iso).toLocaleString('en-GB',{timeZone:'Asia/Riyadh',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}) : '—'; }
   function sar(n){ return n == null ? '—' : Number(n).toFixed(2) + ' SAR'; }
   function pname(code){ var p = META.products.filter(function(x){ return x.code === code; })[0]; return p ? p.name : code; }
+  function dash(v){ return v == null ? '—' : v; }
 
   function loadList(){
     api('GET','/api/cycles').then(function(d){
       var c = d.cycles, open = c.filter(function(x){ return x.stage !== 'closed' && x.stage !== 'cancelled'; });
+      var s1 = open.filter(function(x){ return SEC1.indexOf(x.stage) >= 0; }).length, s2 = open.length - s1;
       var gaps = c.filter(function(x){ return x.gap_amount != null && Number(x.gap_amount) !== 0 && x.stage !== 'cancelled'; });
-      $('top').innerHTML = '<div class="stats"><div class="stat info"><div class="l">Open cycles</div><div class="v">'+open.length+'</div></div>' +
-        '<div class="stat '+(gaps.length?'bad':'good')+'"><div class="l">Cycles with a gap</div><div class="v">'+gaps.length+'</div><div class="s">POS payment differs from platform sales</div></div>' +
-        '<div class="stat"><div class="l">Total cycles</div><div class="v">'+c.length+'</div></div></div>' +
-        '<div><button class="btn green" id="newbtn">+ New cycle</button></div>';
+      $('top').innerHTML = '<div class="stats"><div class="stat info"><div class="l">Section 1 · Stock</div><div class="v">'+s1+'</div><div class="s">cycles requesting, receiving or refilling</div></div>' +
+        '<div class="stat info"><div class="l">Section 2 · Sales &amp; payment</div><div class="v">'+s2+'</div><div class="s">cycles waiting for check, POS or invoice</div></div>' +
+        '<div class="stat '+(gaps.length?'bad':'good')+'"><div class="l">Cycles with a gap</div><div class="v">'+gaps.length+'</div><div class="s">POS payment differs from platform sales</div></div></div>' +
+        '<div><button class="btn green" id="newbtn">+ New stock request</button></div>';
       $('newbtn').onclick = showNew;
-      if (!c.length) { $('list').innerHTML = '<div class="msg">No cycles yet. Press "New cycle" when stock is issued in D365.</div>'; return; }
-      $('list').innerHTML = '<table class="t"><thead><tr><th>Cycle</th><th class="hide-s">Salesman</th><th>Stage</th><th class="hide-s">Issued</th><th>Gap</th></tr></thead><tbody>' +
+      if (!c.length) { $('list').innerHTML = '<div class="msg">No cycles yet. Press "New stock request" when you request stock in D365.</div>'; return; }
+      $('list').innerHTML = '<table class="t"><thead><tr><th>Cycle</th><th class="hide-s">Salesman</th><th>Stage</th><th class="hide-s">Section</th><th>Gap</th></tr></thead><tbody>' +
         c.map(function(x){
           var g = x.gap_amount == null ? '—' : '<span class="'+(Number(x.gap_amount)===0?'gapok':'gapbad')+'">'+sar(x.gap_amount)+'</span>';
-          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+tagCls(x.stage)+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td class="hide-s">'+fdt(x.issued_at)+'</td><td>'+g+'</td></tr>';
+          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+' · '+fdt(x.issued_at)+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+tagCls(x.stage)+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td class="hide-s">'+section(x.stage)+'</td><td>'+g+'</td></tr>';
         }).join('') + '</tbody></table>';
       [].forEach.call(document.querySelectorAll('tr.cl'), function(r){ r.onclick = function(){ openCycle(r.getAttribute('data-id')); }; });
     }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
@@ -76,37 +80,64 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
 
   function showNew(){
     $('detail').style.display = 'none';
-    var h = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">New cycle: stock issued in D365</span></div>' +
-      '<div class="row2"><div><label class="lb">Salesman</label><input class="in" id="n_s" autocomplete="off"></div><div><label class="lb">D365 issue reference</label><input class="in" id="n_r" autocomplete="off"></div></div>' +
-      '<label class="lb">Quantities issued (units)</label>' +
-      META.products.map(function(p){ return '<div class="pq"><span>'+esc(p.emoji)+' <b>'+esc(p.code)+'</b> '+esc(p.name)+'</span><input class="in nq" data-c="'+esc(p.code)+'" type="number" min="0" max="999" inputmode="numeric" placeholder="0"></div>'; }).join('') +
-      '<label class="lb">Notes (optional)</label><textarea class="in" id="n_n"></textarea>' +
-      '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn green" id="n_go">Create cycle</button><button class="btn" id="n_x">Cancel</button></div><div id="n_out"></div>';
-    $('newc').innerHTML = h; $('newc').style.display = '';
-    $('n_x').onclick = function(){ $('newc').style.display = 'none'; };
-    $('n_go').onclick = function(){
-      var lines = [].map.call(document.querySelectorAll('.nq'), function(i){ return { product_code: i.getAttribute('data-c'), qty: Number(i.value) }; }).filter(function(l){ return l.qty > 0; });
-      var b = $('n_go'); b.disabled = true;
-      api('POST','/api/cycles',{ salesman:$('n_s').value, d365_issue_ref:$('n_r').value, notes:$('n_n').value, lines:lines })
-        .then(function(r){ $('newc').style.display = 'none'; loadList(); openCycle(r.id); })
-        .catch(function(e){ $('n_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; })
-        .then(function(){ b.disabled = false; });
-    };
-    $('newc').scrollIntoView({behavior:'smooth'});
+    $('newc').innerHTML = '<div class="msg">Reading live stock from the machine…</div>'; $('newc').style.display = '';
+    api('GET','/api/cycles/live').then(function(r){ return r.live; }, function(){ return null; }).then(function(live){
+      var h = '<div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Section 1 · Request stock (D365)</span></div>' +
+        '<div class="row2"><div><label class="lb">Salesman</label><input class="in" id="n_s" autocomplete="off"></div><div><label class="lb">D365 request / issue reference</label><input class="in" id="n_r" autocomplete="off"></div></div>' +
+        '<label class="lb">Quantity to request (units)</label>' +
+        (live ? '<div style="font-size:12px;color:#78716c;margin-bottom:4px">Prefilled with the free space in the machine right now. Change as needed.</div>' : '<div style="font-size:12px;color:#be123c;margin-bottom:4px">Machine cloud not reachable, so live stock is not shown.</div>') +
+        META.products.map(function(p){
+          var l = live && live[p.code];
+          return '<div class="pq"><span>'+esc(p.emoji)+' <b>'+esc(p.code)+'</b> '+esc(p.name)+(l?'<div style="font-size:11px;color:#78716c">In machine now: <b>'+l.stock+'</b> of '+l.capacity+' · free space '+l.free+'</div>':'')+'</span><input class="in nq" data-c="'+esc(p.code)+'" type="number" min="0" max="999" inputmode="numeric" placeholder="0" value="'+(l && l.free > 0 ? l.free : '')+'"></div>';
+        }).join('') +
+        '<label class="lb">Notes (optional)</label><textarea class="in" id="n_n"></textarea>' +
+        '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn green" id="n_go">Create request</button><button class="btn" id="n_x">Cancel</button></div><div id="n_out"></div>';
+      $('newc').innerHTML = h;
+      $('n_x').onclick = function(){ $('newc').style.display = 'none'; };
+      $('n_go').onclick = function(){
+        var lines = [].map.call(document.querySelectorAll('.nq'), function(i){ return { product_code: i.getAttribute('data-c'), qty: Number(i.value) }; }).filter(function(l){ return l.qty > 0; });
+        var b = $('n_go'); b.disabled = true;
+        api('POST','/api/cycles',{ salesman:$('n_s').value, d365_issue_ref:$('n_r').value, notes:$('n_n').value, lines:lines })
+          .then(function(r){ $('newc').style.display = 'none'; loadList(); openCycle(r.id); })
+          .catch(function(e){ $('n_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; })
+          .then(function(){ b.disabled = false; });
+      };
+      $('newc').scrollIntoView({behavior:'smooth'});
+    });
+  }
+
+  function stepRow(list, c){
+    var idx = META.stages.indexOf(c.stage);
+    return '<div class="steps">' + list.map(function(s){
+      var i = META.stages.indexOf(s);
+      return '<div class="stp'+(c.stage==='cancelled'?'':(i<=idx?' ok':i===idx+1?' now':''))+'">'+(i<=idx&&c.stage!=='cancelled'?'✓ ':'')+esc(LABEL[s])+'</div>';
+    }).join('') + '</div>';
   }
 
   function openCycle(id){
     OPEN = id; $('newc').style.display = 'none';
     api('GET','/api/cycles/'+id).then(function(c){
-      var nxt = c.stage === 'closed' || c.stage === 'cancelled' ? null : nextOf(c.stage);
-      var idx = META.stages.indexOf(c.stage);
-      var steps = '<div class="steps">' + META.stages.map(function(s,i){ return '<div class="stp'+(c.stage==='cancelled'?'':(i<idx?' ok':i===idx?' now':''))+'">'+esc(LABEL[s])+'</div>'; }).join('') + '</div>';
-      var lines = '<table class="t"><thead><tr><th>Product</th><th>Issued</th><th>Received</th><th>Refilled</th><th>Sold</th></tr></thead><tbody>' +
-        c.vend_cycle_lines.map(function(l){ return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+l.qty_issued+'</td><td>'+(l.qty_received==null?'—':l.qty_received)+'</td><td>'+(l.qty_refilled==null?'—':l.qty_refilled)+'</td><td>'+(l.qty_sold==null?'—':l.qty_sold)+'</td></tr>'; }).join('') + '</tbody></table>';
+      var finished = c.stage === 'closed' || c.stage === 'cancelled';
+      var nxt = finished ? null : nextOf(c.stage);
+      var inSec1 = nxt && SEC1.concat(['received']).indexOf(nxt) >= 0 && SEC1.indexOf(nxt) >= 0;
+      var recon = {}; (c.recon || []).forEach(function(r){ recon[r.product_code] = r; });
+      var hasRecon = !!c.recon;
+
+      var lines = '<div style="overflow-x:auto"><table class="t"><thead><tr><th>Product</th><th>Before</th><th>Req.</th><th>Recv.</th><th>Refill</th>' +
+        (hasRecon ? '<th>Sold</th><th>Expect</th><th>Live</th>' : '<th>Sold</th>') + '</tr></thead><tbody>' +
+        c.vend_cycle_lines.map(function(l){
+          var r = recon[l.product_code] || {};
+          var cell = hasRecon ? '<td>'+dash(r.sold_since)+'</td><td>'+dash(r.expected)+'</td><td>'+(r.live==null?'—':('<b class="'+(r.diff==null?'':r.diff===0?'gapok':'gapbad')+'">'+r.live+(r.diff?' ('+(r.diff>0?'+':'')+r.diff+')':'')+'</b>'))+'</td>' : '<td>'+dash(l.qty_sold)+'</td>';
+          return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+dash(l.stock_before)+'</td><td>'+l.qty_issued+'</td><td>'+dash(l.qty_received)+'</td><td>'+dash(l.qty_refilled)+'</td>'+cell+'</tr>';
+        }).join('') + '</tbody></table></div>' +
+        (hasRecon ? '<div style="font-size:11px;color:#78716c;margin-top:6px">Expect = machine stock when requested + refilled − sold since. Live = what the machine cloud shows now. A difference in red means stock does not match this cycle.</div>' : '') +
+        (c.recon_error ? '<div class="res bad">Live stock not available: '+esc(c.recon_error)+'</div>' : '');
+
       var money = (c.actual_amount != null || c.expected_amount != null) ?
         '<div class="stats" style="margin-top:12px"><div class="stat info"><div class="l">Platform sales</div><div class="v">'+sar(c.actual_amount)+'</div><div class="s">'+(c.actual_sold_units==null?'':c.actual_sold_units+' orders since refill')+'</div></div>' +
         '<div class="stat"><div class="l">POS payment</div><div class="v">'+sar(c.expected_amount)+'</div></div>' +
-        '<div class="stat '+(c.gap_amount==null?'':Number(c.gap_amount)===0?'good':'bad')+'"><div class="l">Gap</div><div class="v">'+sar(c.gap_amount)+'</div><div class="s">POS minus platform</div></div></div>' : '';
+        '<div class="stat '+(c.gap_amount==null?'':Number(c.gap_amount)===0?'good':'bad')+'"><div class="l">Gap</div><div class="v">'+sar(c.gap_amount)+'</div><div class="s">POS minus platform</div></div></div>' : '<div class="msg">'+(sec1Done?'Stock section is complete. Run the sales check below.':'Starts after the stock section is complete.')+'</div>';
+
       var act = '';
       if (nxt) {
         if (nxt === 'received' || nxt === 'refilled') {
@@ -114,18 +145,26 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
           act += '<label class="lb">Quantity '+(nxt==='received'?'received':'actually refilled')+' (change only if different)</label>' +
             c.vend_cycle_lines.map(function(l){ return '<div class="pq"><span><b>'+esc(l.product_code)+'</b> '+esc(pname(l.product_code))+'</span><input class="in aq" data-c="'+esc(l.product_code)+'" type="number" min="0" max="999" inputmode="numeric" value="'+(l[base]==null?0:l[base])+'"></div>'; }).join('');
         }
-        if (nxt === 'refilled') act += '<div style="font-size:12px;color:#78716c;margin-top:8px">Then record the same quantities on the machine cloud in the <a href="/refill">Refill</a> tab.</div>';
-        if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Confirm the quantities were saved on the machine cloud (Refill tab).</div>';
+        if (nxt === 'refilled') act += '<div style="font-size:12px;color:#78716c;margin-top:8px">Then record the same quantities on the machine in the <a href="/refill">Refill</a> tab.</div>';
+        if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Compares the live machine stock with this cycle. If it differs, fix it in the <a href="/refill">Refill</a> tab, or write a note to confirm anyway.</div>';
         if (nxt === 'checked') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Reads the platform orders paid since the refill ('+fdt(c.refilled_at)+') and counts what sold.</div>';
         if (nxt === 'paid') act += '<label class="lb">Amount confirmed in POS (SAR)</label><input class="in" id="a_pos" type="number" step="0.01" min="0" inputmode="decimal"><div style="font-size:12px;color:#78716c;margin-top:4px">Platform sales for this cycle: '+sar(c.actual_amount)+'</div>';
         if (nxt === 'invoiced') act += '<label class="lb">Sales invoice number</label><input class="in" id="a_inv" autocomplete="off">';
-        act += '<label class="lb">Note (optional)</label><input class="in" id="a_note" autocomplete="off">' +
+        act += '<label class="lb">Note'+(nxt==='cloud_updated'?' (required if stock differs)':' (optional)')+'</label><input class="in" id="a_note" autocomplete="off">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn green" id="a_go">'+esc(NEXT_BTN[nxt])+'</button><button class="btn" id="a_cx">Cancel this cycle</button></div><div id="a_out"></div>';
       }
+      var actHtml = act ? '<div style="margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3"><b style="font-size:13px">Next step: '+esc(LABEL[nxt])+'</b>'+act+'</div>' : '';
       var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
+      var sec1Done = META.stages.indexOf(c.stage) >= META.stages.indexOf('cloud_updated');
+      var sec1Act = nxt && SEC1.indexOf(nxt) >= 0, sec2Act = nxt && SEC2.indexOf(nxt) >= 0;
+
       $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">2</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
-        '<div style="font-size:12px;color:#78716c">D365 issue '+esc(c.d365_issue_ref||'—')+(c.invoice_ref?' · Invoice '+esc(c.invoice_ref):'')+(c.notes?' · '+esc(c.notes):'')+'</div>' +
-        steps + lines + money + act + '<div style="margin-top:14px"><div class="l" style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
+        '<div style="font-size:12px;color:#78716c">D365 '+esc(c.d365_issue_ref||'—')+(c.invoice_ref?' · Invoice '+esc(c.invoice_ref):'')+(c.notes?' · '+esc(c.notes):'')+(c.stage==='cancelled'?' · <b style="color:#be123c">Cancelled</b>':'')+'</div>' +
+        '<div style="margin-top:14px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#3f6212">Section 1 · Stock: request, receive, refill'+(sec1Done?' ✓':'')+'</div>' +
+        stepRow(SEC1, c) + lines + (sec1Act ? actHtml : '') +
+        '<div style="margin-top:22px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#3f6212">Section 2 · Sales, POS payment and invoice'+(c.stage==='closed'?' ✓':'')+'</div>' +
+        stepRow(SEC2, c) + money + (sec2Act ? actHtml : '') +
+        '<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
       $('detail').style.display = '';
       $('d_x').onclick = function(){ $('detail').style.display = 'none'; OPEN = null; };
       if (nxt) {
