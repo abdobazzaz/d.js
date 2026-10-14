@@ -274,46 +274,35 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
   U.rangePicker(rpHost, { from: from, to: to, onChange: function(f, e){ from = f; to = e; load(); } });
   xl.onclick = function(){ window.location = '/api/refills.xlsx?'+qs(); };
 
-  function stat(l, v, s, cls){ return '<div class="stat '+(cls||'')+'"><div class="l">'+esc(l)+'</div><div class="v">'+esc(v)+'</div><div class="s">'+esc(s)+'</div></div>'; }
-  function sec(n, title, badge, body){
-    return '<div class="card"><div class="sec-h"><div class="sec-n">'+n+'</div><span class="sec-t">'+title+'</span>'+(badge?'<span class="badge">'+esc(badge)+'</span>':'')+'</div>'+body+'</div>';
+  var NAMES = {};
+  function short(sku){ return (NAMES[sku] || sku).replace(/\s*\d+\s*gms?$/i,'').replace('Fettuccine Chicken Alfredo','Fettuccine Chicken'); }
+  function when(s){
+    var d = s.start.slice(0,10), t = s.start.slice(11,16), e = s.end.slice(11,16);
+    var nice = new Date(d+'T00:00:00Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',timeZone:'UTC'});
+    return nice+', '+t+(e!==t?' – '+e:'');
   }
-  function items(s){
-    return s.items.map(function(i){ return esc(i.sku)+' <b class="pos">+'+i.added+'</b>'+(i.removed?' <b class="neg">−'+i.removed+'</b>':''); }).join(' · ');
+  function what(s){
+    return s.items.map(function(i){
+      var net = i.added - i.removed;
+      return '<div style="white-space:nowrap">'+esc(short(i.sku))+' <b class="'+(net>0?'pos':net<0?'neg':'')+'">'+(net>0?'+':net<0?'−':'')+Math.abs(net)+'</b>'+(i.removed&&i.added?' <span style="color:#78716c;font-size:11px">('+i.added+' in, '+i.removed+' out)</span>':'')+'</div>';
+    }).join('');
   }
   function render(d){
     last = d; var k = d.kpis, h = '';
-    h += '<div class="stats">'+
-      stat('Refill sessions', k.sessions, d.from+' → '+d.to, 'info')+
-      stat('Units added', '+'+k.added, 'put into the machine', 'good')+
-      stat('Units removed', k.removed ? '−'+k.removed : '0', 'taken out / corrections', k.removed ? 'warn' : '')+
-      stat('Last refill', k.last || '—', k.people+' '+(k.people===1?'person':'people')+' in range')+
-      '</div>';
-
-    var sb;
-    if (!d.sessions.length) sb = '<div class="msg">No refills in this range.</div>';
+    d.bySku.forEach(function(x){ NAMES[x.sku] = x.product; });
+    var list = showAll ? d.sessions : d.sessions.slice(0,100);
+    h += '<div class="card"><div style="font-size:14px;margin-bottom:12px"><b>'+k.sessions+'</b> refill'+(k.sessions===1?'':'s')+' · <b class="pos">+'+k.added+'</b> units put in'+(k.removed?' · <b class="neg">−'+k.removed+'</b> taken out':'')+'</div>';
+    if (!list.length) h += '<div class="msg">No refills in this period.</div>';
     else {
-      var list = showAll ? d.sessions : d.sessions.slice(0,100);
-      sb = '<div class="scroll"><table><tr><th>Start (KSA)</th><th>End</th><th>Refilled by</th><th>Products</th><th class="n">Added</th><th class="n">Removed</th></tr>';
+      h += '<div class="scroll"><table><tr><th>When (KSA)</th><th>Who</th><th>What changed in the machine</th><th class="n">Net units</th></tr>';
       list.forEach(function(s){
-        sb += '<tr><td>'+esc(s.start)+'</td><td>'+esc(s.end.slice(11))+'</td><td>'+esc(s.who)+'</td><td>'+items(s)+'</td><td class="n pos">+'+s.added+'</td><td class="n'+(s.removed?' neg':'')+'">'+(s.removed?'−'+s.removed:'0')+'</td></tr>';
+        var net = s.added - s.removed;
+        h += '<tr><td style="white-space:nowrap">'+esc(when(s))+'</td><td>'+esc(s.who)+'</td><td>'+what(s)+'</td><td class="n"><b class="'+(net>0?'pos':net<0?'neg':'')+'">'+(net>0?'+':net<0?'−':'')+Math.abs(net)+'</b></td></tr>';
       });
-      sb += '</table></div>';
-      if (d.sessions.length > 100 && !showAll) sb += '<div class="more"><button class="btn" id="all">Show all '+d.sessions.length+'</button></div>';
+      h += '</table></div>';
+      if (d.sessions.length > 100 && !showAll) h += '<div class="more"><button class="btn" id="all">Show all '+d.sessions.length+'</button></div>';
     }
-    h += sec(1, 'Refill sessions', String(d.sessions.length), sb);
-
-    var pb = '<div class="scroll"><table><tr><th>Product</th><th class="n">Added</th><th class="n">Removed</th></tr>';
-    d.bySku.forEach(function(x){ pb += '<tr><td><b>'+esc(x.sku)+'</b> · '+esc(x.product)+'</td><td class="n pos">+'+x.added+'</td><td class="n'+(x.removed?' neg':'')+'">'+(x.removed?'−'+x.removed:'0')+'</td></tr>'; });
-    if (!d.bySku.length) pb += '<tr><td colspan="3" class="msg">No data</td></tr>';
-    h += sec(2, 'By product', '', pb+'</table></div>');
-
-    var wb = '<div class="scroll"><table><tr><th>Person</th><th class="n">Sessions</th><th class="n">Added</th><th class="n">Removed</th></tr>';
-    d.byWho.forEach(function(x){ wb += '<tr><td>'+esc(x.who)+'</td><td class="n">'+x.sessions+'</td><td class="n pos">+'+x.added+'</td><td class="n'+(x.removed?' neg':'')+'">'+(x.removed?'−'+x.removed:'0')+'</td></tr>'; });
-    if (!d.byWho.length) wb += '<tr><td colspan="4" class="msg">No data</td></tr>';
-    h += sec(3, 'By person', '', wb+'</table></div>');
-
-    h += '<div class="msg" style="padding:4px">Sessions group one person\'s slot refills made within 30 minutes of each other. '+d.loaded+' records loaded'+(d.total?' of '+d.total:'')+'.</div>';
+    h += '<div class="msg" style="padding:10px 0 0;text-align:left">This is what the machine cloud recorded. One row is one visit: changes made within 30 minutes by the same person. Refills done through a stock request are also listed on that request. The Excel download has the detail per slot.</div></div>';
     document.getElementById('out').innerHTML = h;
     var a = document.getElementById('all'); if (a) a.onclick = function(){ showAll = true; render(last); };
   }
