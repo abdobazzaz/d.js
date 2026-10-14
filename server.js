@@ -1290,7 +1290,7 @@ async function doCheck() {
       }
     }
   } catch(e) {
-    logError(`Check failed: ${e.message}`);
+    logError(`Check failed: ${e.message}`); STATE.lastError = e.message;
     if (e.message.includes('401') || e.message.includes('403')) {
       STATE.token = '';
       if (!STATE.manual.cookie) STATE.cookie = '';
@@ -1762,7 +1762,7 @@ app.post('/api/replenish', async (req, res) => {
 
 // ── RECONNECT: paste a session obtained by a manual (captcha) login ───────
 app.get('/session', (req, res) => res.sendFile(path.join(__dirname, 'session.html')));
-app.get('/api/session', (req, res) => res.json({ issue: STATE.authIssue, lastGood: STATE.lastGood, hasPasted: !!(STATE.manual.token || STATE.manual.cookie) }));
+app.get('/api/session', (req, res) => res.json({ issue: STATE.authIssue, lastGood: STATE.lastGood, hasPasted: !!(STATE.manual.token || STATE.manual.cookie), lastCheck: STATE.lastCheck, lastError: STATE.lastError || null }));
 app.post('/api/session', async (req, res) => {
   const clean = (v, strip) => { let x = String(v || '').trim(); if (strip) x = x.replace(/^Bearer\s+/i, ''); return /[\r\n]/.test(x) || x.length > 4000 ? null : x; };
   const token = clean(req.body?.token, true), cookie = clean(req.body?.cookie, false);
@@ -1773,6 +1773,8 @@ app.post('/api/session', async (req, res) => {
   try {
     const r = await apiFetch('/api/v1/devices?page=1&limit=1');
     if (r?.code !== 200) throw new Error(r?.msg || `code ${r?.code}`);
+    const o = await apiFetch('/api/v1/orders?page=1&limit=1');
+    if (o?.code !== 200) throw new Error('orders: ' + (o?.msg || `code ${o?.code}`));
   } catch (e) {
     STATE.manual = prev.manual; STATE.token = prev.token; STATE.cookie = prev.cookie;
     return res.status(400).json({ error: 'The platform did not accept it: ' + e.message });
