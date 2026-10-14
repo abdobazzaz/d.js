@@ -3,9 +3,10 @@
   var ICON = {
     monitor: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     sales: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    cycles: '<path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5M20 12a8 8 0 0 1-14 5l-2-2M4 20v-5h5"/>',
     refill: '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>'
   };
-  var TABS = [['monitor', '/', 'Monitor'], ['sales', '/sales', 'Sales'], ['refill', '/refill', 'Refill']];
+  var TABS = [['monitor', '/', 'Monitor'], ['sales', '/sales', 'Sales'], ['refill', '/refill', 'Refill'], ['cycles', '/cycles', 'Cycles']];
   var MON = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   var MS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   var WD = ['Sa', 'Su', 'Mo', 'Tu', 'We', 'Th', 'Fr']; // Saturday-first

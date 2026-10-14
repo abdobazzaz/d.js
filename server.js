@@ -14,7 +14,7 @@ app.use(express.json());
 
 // ── ACCESS CONTROL: Monitor page is public; Sales, Refill, their APIs and debug routes need the PIN ──
 const crypto = require('crypto');
-const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/session(\/|$)/, /^\/api\/(sales|refills|slots|replenish|session)/, /^\/debug-/];
+const LOCKED = [/^\/sales(\/|$)/, /^\/refill(\/|$)/, /^\/cycles(\/|$)/, /^\/session(\/|$)/, /^\/api\/(sales|refills|slots|replenish|session|cycles)/, /^\/debug-/];
 const SESSION_MS = 12 * 3600 * 1000;   // a login lasts until the browser is closed, and never more than 12 hours
 const sign = exp => crypto.createHmac('sha256', process.env.REFILL_PIN || '').update('radwa-access-v2:' + exp).digest('hex');
 const accessToken = () => { const exp = Date.now() + SESSION_MS; return exp + '.' + sign(exp); };
@@ -1313,6 +1313,7 @@ app.get('/', (req, res) => {
     monitor: '<path d="M3 12h4l3-8 4 16 3-8h4"/>',
     sales:   '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
     refill:  '<path d="M12 15V4M8 8l4-4 4 4"/><path d="M4 14v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/>',
+    cycles:  '<path d="M4 12a8 8 0 0 1 14-5l2 2M20 4v5h-5M20 12a8 8 0 0 1-14 5l-2-2M4 20v-5h5"/>',
   };
   const svg = (k, c) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[k]}</svg>`;
   const pill = (k, href, label) => `<a class="pill${k === 'monitor' ? ' on' : ''}" href="${href}">${svg(k, k === 'monitor' ? '#173404' : '#57534e')}${label}</a>`;
@@ -1445,7 +1446,7 @@ app.get('/', (req, res) => {
       <button type="button" class="btn" onclick="location.reload()">Refresh</button>
     </div>
   </div>
-  <div class="pills">${pill('monitor','/','Monitor')}${pill('sales','/sales','Sales')}${pill('refill','/refill','Refill')}</div>
+  <div class="pills">${pill('monitor','/','Monitor')}${pill('sales','/sales','Sales')}${pill('refill','/refill','Refill')}${pill('cycles','/cycles','Cycles')}</div>
 </div></div>
 <div class="wrap">
   ${authBanner}
@@ -1784,6 +1785,8 @@ app.post('/api/session', async (req, res) => {
 });
 
 app.get('/refill', (req, res) => res.sendFile(path.join(__dirname, 'refill.html')));
+app.get('/cycles', (req, res) => res.sendFile(path.join(__dirname, 'cycles.html')));
+require('./cycles')(app, { CFG, getOrdersCached, getProductCode });
 app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
 app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
 app.get('/logo.png', (req, res) => res.sendFile(path.join(__dirname, 'New Radwa Logo with text- trasperant.png')));

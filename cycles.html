@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Radwa Vending – Cycles</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/ui.css">
+<style>
+.row2{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+label.lb{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e;margin:12px 0 4px}
+input.in,textarea.in{width:100%;height:44px;border:1.5px solid #e7e5e4;border-radius:11px;padding:0 12px;font-family:inherit;font-size:14px;background:#fff}
+textarea.in{height:64px;padding:10px 12px;resize:vertical}
+input.in:focus,textarea.in:focus{outline:none;border-color:#84BD00}
+.pq{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid #f5f5f4;font-size:14px}
+.pq input{width:84px;text-align:center}
+table.t{width:100%;border-collapse:collapse;font-size:13px}
+table.t th{text-align:left;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#57534e;padding:8px 6px;border-bottom:2px solid #e7e5e4}
+table.t td{padding:10px 6px;border-bottom:1px solid #f5f5f4;vertical-align:middle}
+table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
+.tag{display:inline-block;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;background:#f5f5f4;color:#44403c;white-space:nowrap}
+.tag.go{background:#ecfdf5;color:#047857}.tag.wait{background:#fffbeb;color:#b45309}.tag.done{background:#f0f9ff;color:#0369a1}.tag.x{background:#fff1f2;color:#be123c}
+.steps{display:flex;gap:4px;flex-wrap:wrap;margin:6px 0 4px}
+.stp{flex:1 1 90px;min-width:80px;text-align:center;font-size:11px;font-weight:700;padding:8px 4px;border-radius:8px;background:#f5f5f4;color:#78716c}
+.stp.ok{background:#ecfdf5;color:#047857}.stp.now{background:#84BD00;color:#173404}
+.ev{font-size:12px;color:#57534e;padding:6px 0;border-bottom:1px solid #f5f5f4}
+.res{font-size:13px;font-weight:600;border-radius:8px;padding:10px 12px;margin-top:12px}
+.res.ok{background:#ecfdf5;color:#047857}.res.bad{background:#fff1f2;color:#be123c}
+.gapbad{color:#be123c;font-weight:700}.gapok{color:#047857;font-weight:700}
+@media(max-width:640px){.hide-s{display:none}}
+</style></head>
+<body>
+<div id="hdr"></div>
+<div class="wrap" style="max-width:980px">
+  <div id="top"></div>
+  <div class="card" id="newc" style="display:none"></div>
+  <div class="card" id="detail" style="display:none"></div>
+  <div class="card"><div class="sec-h"><div class="sec-n">1</div><span class="sec-t">Cycles</span></div><div id="list"><div class="msg">Loading…</div></div></div>
+</div>
+<script src="/ui.js"></script>
+<script>
+(function(){
+  var $ = function(i){ return document.getElementById(i); }, esc = RUI.esc;
+  var META = null, OPEN = null;
+  var LABEL = { issued:'Issued (D365)', received:'Received', refilled:'Refilled', cloud_updated:'Cloud updated', checked:'Visit checked', paid:'Paid (POS)', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
+  var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Confirm cloud updated', checked:'Run the visit check', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the cycle' };
+  RUI.header('cycles', { sub: 'Refill-to-invoice control' });
+
+  function api(method, url, body){
+    return fetch(url, { method: method, headers: {'Content-Type':'application/json'}, body: body ? JSON.stringify(body) : undefined })
+      .then(function(r){ return r.json().then(function(j){ if (!r.ok) throw new Error(j.error || r.status); return j; }); });
+  }
+  function nextOf(stage){ var i = META.stages.indexOf(stage); return i >= 0 ? META.stages[i+1] : null; }
+  function tagCls(s){ return s === 'closed' ? 'done' : s === 'cancelled' ? 'x' : s === 'issued' ? 'wait' : 'go'; }
+  function fdt(iso){ return iso ? new Date(iso).toLocaleString('en-GB',{timeZone:'Asia/Riyadh',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}) : '—'; }
+  function sar(n){ return n == null ? '—' : Number(n).toFixed(2) + ' SAR'; }
+  function pname(code){ var p = META.products.filter(function(x){ return x.code === code; })[0]; return p ? p.name : code; }
+
+  function loadList(){
+    api('GET','/api/cycles').then(function(d){
+      var c = d.cycles, open = c.filter(function(x){ return x.stage !== 'closed' && x.stage !== 'cancelled'; });
+      var gaps = c.filter(function(x){ return x.gap_amount != null && Number(x.gap_amount) !== 0 && x.stage !== 'cancelled'; });
+      $('top').innerHTML = '<div class="stats"><div class="stat info"><div class="l">Open cycles</div><div class="v">'+open.length+'</div></div>' +
+        '<div class="stat '+(gaps.length?'bad':'good')+'"><div class="l">Cycles with a gap</div><div class="v">'+gaps.length+'</div><div class="s">POS payment differs from platform sales</div></div>' +
+        '<div class="stat"><div class="l">Total cycles</div><div class="v">'+c.length+'</div></div></div>' +
+        '<div><button class="btn green" id="newbtn">+ New cycle</button></div>';
+      $('newbtn').onclick = showNew;
+      if (!c.length) { $('list').innerHTML = '<div class="msg">No cycles yet. Press "New cycle" when stock is issued in D365.</div>'; return; }
+      $('list').innerHTML = '<table class="t"><thead><tr><th>Cycle</th><th class="hide-s">Salesman</th><th>Stage</th><th class="hide-s">Issued</th><th>Gap</th></tr></thead><tbody>' +
+        c.map(function(x){
+          var g = x.gap_amount == null ? '—' : '<span class="'+(Number(x.gap_amount)===0?'gapok':'gapbad')+'">'+sar(x.gap_amount)+'</span>';
+          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+tagCls(x.stage)+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td class="hide-s">'+fdt(x.issued_at)+'</td><td>'+g+'</td></tr>';
+        }).join('') + '</tbody></table>';
+      [].forEach.call(document.querySelectorAll('tr.cl'), function(r){ r.onclick = function(){ openCycle(r.getAttribute('data-id')); }; });
+    }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
+  }
+
+  function showNew(){
+    $('detail').style.display = 'none';
+    var h = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">New cycle: stock issued in D365</span></div>' +
+      '<div class="row2"><div><label class="lb">Salesman</label><input class="in" id="n_s" autocomplete="off"></div><div><label class="lb">D365 issue reference</label><input class="in" id="n_r" autocomplete="off"></div></div>' +
+      '<label class="lb">Quantities issued (units)</label>' +
+      META.products.map(function(p){ return '<div class="pq"><span>'+esc(p.emoji)+' <b>'+esc(p.code)+'</b> '+esc(p.name)+'</span><input class="in nq" data-c="'+esc(p.code)+'" type="number" min="0" max="999" inputmode="numeric" placeholder="0"></div>'; }).join('') +
+      '<label class="lb">Notes (optional)</label><textarea class="in" id="n_n"></textarea>' +
+      '<div style="display:flex;gap:10px;margin-top:14px"><button class="btn green" id="n_go">Create cycle</button><button class="btn" id="n_x">Cancel</button></div><div id="n_out"></div>';
+    $('newc').innerHTML = h; $('newc').style.display = '';
+    $('n_x').onclick = function(){ $('newc').style.display = 'none'; };
+    $('n_go').onclick = function(){
+      var lines = [].map.call(document.querySelectorAll('.nq'), function(i){ return { product_code: i.getAttribute('data-c'), qty: Number(i.value) }; }).filter(function(l){ return l.qty > 0; });
+      var b = $('n_go'); b.disabled = true;
+      api('POST','/api/cycles',{ salesman:$('n_s').value, d365_issue_ref:$('n_r').value, notes:$('n_n').value, lines:lines })
+        .then(function(r){ $('newc').style.display = 'none'; loadList(); openCycle(r.id); })
+        .catch(function(e){ $('n_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; })
+        .then(function(){ b.disabled = false; });
+    };
+    $('newc').scrollIntoView({behavior:'smooth'});
+  }
+
+  function openCycle(id){
+    OPEN = id; $('newc').style.display = 'none';
+    api('GET','/api/cycles/'+id).then(function(c){
+      var nxt = c.stage === 'closed' || c.stage === 'cancelled' ? null : nextOf(c.stage);
+      var idx = META.stages.indexOf(c.stage);
+      var steps = '<div class="steps">' + META.stages.map(function(s,i){ return '<div class="stp'+(c.stage==='cancelled'?'':(i<idx?' ok':i===idx?' now':''))+'">'+esc(LABEL[s])+'</div>'; }).join('') + '</div>';
+      var lines = '<table class="t"><thead><tr><th>Product</th><th>Issued</th><th>Received</th><th>Refilled</th><th>Sold</th></tr></thead><tbody>' +
+        c.vend_cycle_lines.map(function(l){ return '<tr><td>'+esc(l.product_code)+' <span style="color:#78716c" class="hide-s">'+esc(pname(l.product_code))+'</span></td><td>'+l.qty_issued+'</td><td>'+(l.qty_received==null?'—':l.qty_received)+'</td><td>'+(l.qty_refilled==null?'—':l.qty_refilled)+'</td><td>'+(l.qty_sold==null?'—':l.qty_sold)+'</td></tr>'; }).join('') + '</tbody></table>';
+      var money = (c.actual_amount != null || c.expected_amount != null) ?
+        '<div class="stats" style="margin-top:12px"><div class="stat info"><div class="l">Platform sales</div><div class="v">'+sar(c.actual_amount)+'</div><div class="s">'+(c.actual_sold_units==null?'':c.actual_sold_units+' orders since refill')+'</div></div>' +
+        '<div class="stat"><div class="l">POS payment</div><div class="v">'+sar(c.expected_amount)+'</div></div>' +
+        '<div class="stat '+(c.gap_amount==null?'':Number(c.gap_amount)===0?'good':'bad')+'"><div class="l">Gap</div><div class="v">'+sar(c.gap_amount)+'</div><div class="s">POS minus platform</div></div></div>' : '';
+      var act = '';
+      if (nxt) {
+        if (nxt === 'received' || nxt === 'refilled') {
+          var base = nxt === 'received' ? 'qty_issued' : 'qty_received';
+          act += '<label class="lb">Quantity '+(nxt==='received'?'received':'actually refilled')+' (change only if different)</label>' +
+            c.vend_cycle_lines.map(function(l){ return '<div class="pq"><span><b>'+esc(l.product_code)+'</b> '+esc(pname(l.product_code))+'</span><input class="in aq" data-c="'+esc(l.product_code)+'" type="number" min="0" max="999" inputmode="numeric" value="'+(l[base]==null?0:l[base])+'"></div>'; }).join('');
+        }
+        if (nxt === 'refilled') act += '<div style="font-size:12px;color:#78716c;margin-top:8px">Then record the same quantities on the machine cloud in the <a href="/refill">Refill</a> tab.</div>';
+        if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Confirm the quantities were saved on the machine cloud (Refill tab).</div>';
+        if (nxt === 'checked') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Reads the platform orders paid since the refill ('+fdt(c.refilled_at)+') and counts what sold.</div>';
+        if (nxt === 'paid') act += '<label class="lb">Amount confirmed in POS (SAR)</label><input class="in" id="a_pos" type="number" step="0.01" min="0" inputmode="decimal"><div style="font-size:12px;color:#78716c;margin-top:4px">Platform sales for this cycle: '+sar(c.actual_amount)+'</div>';
+        if (nxt === 'invoiced') act += '<label class="lb">Sales invoice number</label><input class="in" id="a_inv" autocomplete="off">';
+        act += '<label class="lb">Note (optional)</label><input class="in" id="a_note" autocomplete="off">' +
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn green" id="a_go">'+esc(NEXT_BTN[nxt])+'</button><button class="btn" id="a_cx">Cancel this cycle</button></div><div id="a_out"></div>';
+      }
+      var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
+      $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">2</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
+        '<div style="font-size:12px;color:#78716c">D365 issue '+esc(c.d365_issue_ref||'—')+(c.invoice_ref?' · Invoice '+esc(c.invoice_ref):'')+(c.notes?' · '+esc(c.notes):'')+'</div>' +
+        steps + lines + money + act + '<div style="margin-top:14px"><div class="l" style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
+      $('detail').style.display = '';
+      $('d_x').onclick = function(){ $('detail').style.display = 'none'; OPEN = null; };
+      if (nxt) {
+        $('a_go').onclick = function(){
+          var body = { to: nxt, note: $('a_note').value };
+          var q = {}; [].forEach.call(document.querySelectorAll('.aq'), function(i){ q[i.getAttribute('data-c')] = Number(i.value); });
+          if (Object.keys(q).length) body.qty = q;
+          if (nxt === 'paid') body.pos_amount = $('a_pos').value;
+          if (nxt === 'invoiced') body.invoice_ref = $('a_inv').value;
+          send(id, body, $('a_go'));
+        };
+        $('a_cx').onclick = function(){
+          var why = prompt('Reason for cancelling this cycle?');
+          if (why) send(id, { to:'cancelled', note: why }, $('a_cx'));
+        };
+      }
+      $('detail').scrollIntoView({behavior:'smooth'});
+    }).catch(function(e){ $('detail').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; $('detail').style.display = ''; });
+  }
+  function send(id, body, btn){
+    btn.disabled = true;
+    api('POST','/api/cycles/'+id+'/advance', body)
+      .then(function(){ loadList(); openCycle(id); })
+      .catch(function(e){ $('a_out').innerHTML = '<div class="res bad">'+esc(e.message)+'</div>'; btn.disabled = false; });
+  }
+
+  api('GET','/api/cycles/meta').then(function(m){
+    META = m;
+    if (!m.configured) { $('top').innerHTML = '<div class="stat warn"><div class="l">Not switched on yet</div><div class="v" style="font-size:16px">Cycle records need two settings in Render</div><div class="s">Add SUPABASE_URL and SUPABASE_SERVICE_KEY under Environment, then save.</div></div>'; $('list').innerHTML = ''; return; }
+    loadList();
+  }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
+})();
+</script>
+</body></html>
