@@ -1294,7 +1294,7 @@ async function doCheck() {
     if (e.message.includes('401') || e.message.includes('403')) {
       STATE.token = '';
       if (!STATE.manual.cookie) STATE.cookie = '';
-      await markAuth(STATE.manual.token || STATE.manual.cookie ? 'The pasted session was rejected or has expired.' : 'The platform rejected the saved login.');
+      await markAuth((STATE.manual.token || STATE.manual.cookie ? 'The pasted session was rejected or has expired' : 'The platform rejected the saved login (nothing pasted since the last restart)') + ' [' + e.message + ']');
     }
   }
 }
