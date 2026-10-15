@@ -72,7 +72,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
 (function(){
   var $ = function(i){ return document.getElementById(i); }, esc = RUI.esc;
   var META = null;
-  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Closed', refill_batch:'Refill', checked:'Sales checked', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
+  var LABEL = { issued:'Requested', received:'Received', refilled:'Refilled', cloud_updated:'Closed', refill_batch:'Refill', receipt_ref:'D365 receipt', checked:'Sales checked', paid:'POS payment', invoiced:'Invoiced', closed:'Closed', cancelled:'Cancelled' };
   var NEXT_BTN = { received:'Confirm receipt', refilled:'Confirm refill done', cloud_updated:'Close the request (check machine stock)', paid:'Confirm POS payment', invoiced:'Record invoice', closed:'Close the settlement' };
   RUI.header('refill', { sub: 'Refill · stock requests · Dahban' });
 
@@ -175,11 +175,17 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
       var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
       $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
         '<div style="font-size:12px;color:#78716c">D365 request <b>'+esc(c.d365_issue_ref||'—')+'</b>'+(c.d365_receipt_ref?' · D365 receipt <b>'+esc(c.d365_receipt_ref)+'</b>':'')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+(c.vend_settlements?' · Invoiced in <b>'+esc(c.vend_settlements.settlement_no)+'</b>':'')+'</div>' +
-        stepRow(META.stages, c.stage) + lines +
+        stepRow(META.stages, c.stage) + (!cancelled && c.stage !== 'issued' ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0"><span style="font-size:12px;font-weight:700;color:#57534e">D365 receipt reference</span><input class="in" id="rr_in" style="width:220px;height:38px" autocomplete="off" value="'+esc(c.d365_receipt_ref||'')+'" placeholder="not entered"><button class="btn" id="rr_go" style="height:38px">'+(c.d365_receipt_ref?'Update':'Save')+'</button><span id="rr_out" style="font-size:12px"></span></div>' : '') + lines +
         (act ? '<div style="margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3">'+(nxt?'<b style="font-size:13px">Next step: '+esc(LABEL[nxt])+'</b>':'')+act+'</div>' : '') +
         '<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
       $('detail').style.display = '';
       if ($('rbox')) refillBox(c, $('rbox'));
+      if ($('rr_go')) $('rr_go').onclick = function(){
+        var b = $('rr_go'); b.disabled = true;
+        api('POST','/api/cycles/'+id+'/receipt-ref',{ d365_receipt_ref: $('rr_in').value })
+          .then(function(){ loadRequests(); openRequest(id); })
+          .catch(function(e){ $('rr_out').innerHTML = '<span style="color:#be123c">'+esc(e.message)+'</span>'; b.disabled = false; });
+      };
       $('d_x').onclick = function(){ $('detail').style.display = 'none'; };
       if ($('a_go')) $('a_go').onclick = function(){
         var body = { to: nxt, note: $('a_note').value };

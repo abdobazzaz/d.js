@@ -160,6 +160,21 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
     try { res.json({ slots: await getSlots() }); } catch (e) { res.status(502).json({ error: e.message }); }
   });
   const REFILL_SEEN = new Map();
+  // Add or correct the D365 receipt reference after the receipt step (e.g. requests received before it was asked for).
+  app.post('/api/cycles/:id/receipt-ref', need, async (req, res) => {
+    const id = idOf(req); if (!id) return res.status(400).json({ error: 'Bad id' });
+    const ref = String(req.body?.d365_receipt_ref || '').trim().slice(0, 80);
+    if (!ref) return res.status(400).json({ error: 'Enter the D365 receipt reference' });
+    try {
+      const rows = await sb('GET', 'vend_cycles', { query: `?id=eq.${id}&select=stage,d365_receipt_ref` });
+      if (!rows.length) return res.status(404).json({ error: 'Not found' });
+      if (rows[0].stage === 'issued' || rows[0].stage === 'cancelled') return res.status(409).json({ error: 'Confirm receipt first (this request has not been received)' });
+      await sb('PATCH', 'vend_cycles', { query: `?id=eq.${id}`, body: { d365_receipt_ref: ref } });
+      await sb('POST', 'vend_cycle_events', { body: { cycle_id: id, stage: 'receipt_ref', actor: who(req), note: rows[0].d365_receipt_ref ? `D365 receipt ${rows[0].d365_receipt_ref} → ${ref}` : `D365 receipt ${ref}`, payload: { d365_receipt_ref: ref } } });
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+  });
+
   app.post('/api/cycles/:id/refill', need, async (req, res) => {
     const id = idOf(req); if (!id) return res.status(400).json({ error: 'Bad id' });
     const token = String(req.body?.token || '');
