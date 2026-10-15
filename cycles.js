@@ -236,7 +236,12 @@ module.exports = function mountCycles(app, { CFG, getOrdersCached, getProductCod
         }
         return null;
       };
-      if (to === 'received') { const err = qtyMap('qty_received', 'qty_issued'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates.slice(); }
+      if (to === 'received') {
+        const rref = String(b.d365_receipt_ref || '').trim().slice(0, 80);
+        if (!rref) return res.status(400).json({ error: 'Enter the D365 receipt reference' });
+        patch.d365_receipt_ref = rref; payload.d365_receipt_ref = rref;
+        const err = qtyMap('qty_received', 'qty_issued'); if (err) return res.status(400).json({ error: err }); payload.lines = lineUpdates.slice();
+      }
       if (to === 'refilled') {
         // quantities come from the planogram refills already recorded on the request
         const short = lines.filter(l => (l.qty_refilled || 0) < (l.qty_received || 0));

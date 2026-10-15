@@ -147,7 +147,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
         act += '<label class="lb">Note (optional)</label><input class="in" id="a_note" autocomplete="off">' +
           '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px"><button class="btn green" id="a_go">'+esc(NEXT_BTN[nxt])+'</button><button class="btn" id="a_cx">Cancel this settlement</button></div><div id="a_out"></div>';
       }
-      var reqs = c.vend_cycles.map(function(r){ return '<span class="tag done" style="margin-right:6px">'+esc(r.cycle_no)+'</span>'; }).join('');
+      var reqs = c.vend_cycles.map(function(r){ return '<span class="tag done" style="margin:0 6px 6px 0">'+esc(r.cycle_no)+' · D365 '+esc(r.d365_issue_ref||'—')+(r.d365_receipt_ref?' → '+esc(r.d365_receipt_ref):'')+'</span>'; }).join('');
       var ev = c.vend_settlement_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
       $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">'+esc(c.settlement_no)+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
         '<div style="font-size:12px;color:#78716c">Period '+fdt(c.period_from)+' → '+fdt(c.period_to)+' (KSA)'+(c.invoice_ref?' · Invoice <b>'+esc(c.invoice_ref)+'</b>':'')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+'</div>' +

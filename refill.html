@@ -108,7 +108,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
         c.map(function(x){
           var cls = x.stage === 'cancelled' ? 'x' : x.stage === 'cloud_updated' ? 'done' : x.stage === 'issued' ? 'wait' : 'go';
           var inv = x.stage === 'cancelled' ? '—' : x.vend_settlements ? '<span class="tag done">'+esc(x.vend_settlements.settlement_no)+'</span>' : (x.stage === 'cloud_updated' ? '<span class="tag wait">Not yet</span>' : '—');
-          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+' · '+fdt(x.issued_at)+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+cls+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td>'+inv+'</td></tr>';
+          return '<tr class="cl" data-id="'+x.id+'"><td><b>'+esc(x.cycle_no)+'</b><div style="font-size:11px;color:#78716c">'+esc(x.d365_issue_ref||'')+(x.d365_receipt_ref?' → '+esc(x.d365_receipt_ref):'')+' · '+fdt(x.issued_at)+'</div></td><td class="hide-s">'+esc(x.salesman||'—')+'</td><td><span class="tag '+cls+'">'+esc(LABEL[x.stage]||x.stage)+'</span></td><td>'+inv+'</td></tr>';
         }).join('') + '</tbody></table>';
       [].forEach.call(document.querySelectorAll('tr.cl'), function(r){ r.onclick = function(){ openRequest(r.getAttribute('data-id')); }; });
     }).catch(function(e){ $('list').innerHTML = '<div class="msg err">'+esc(e.message)+'</div>'; });
@@ -161,7 +161,8 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
         if (nxt === 'refilled') act += '<div id="rbox"></div>';
         if (nxt === 'received') {
           var base = 'qty_issued';
-          act += '<label class="lb">Quantity received (change only if different)</label>' +
+          act += '<label class="lb">D365 receipt reference</label><input class="in" id="a_rref" autocomplete="off" placeholder="D365 receipt / transfer number">' +
+            '<label class="lb">Quantity received (change only if different)</label>' +
             c.vend_cycle_lines.map(function(l){ return '<div class="pq"><span><b>'+esc(l.product_code)+'</b> '+esc(pname(l.product_code))+'</span><input class="in aq" data-c="'+esc(l.product_code)+'" type="number" min="0" max="999" inputmode="numeric" value="'+(l[base]==null?0:l[base])+'"></div>'; }).join('');
         }
         if (nxt === 'cloud_updated') act += '<div style="font-size:13px;color:#44403c;margin-top:6px">Compares the live machine stock with this request. If it differs, ask the admin to correct the slot on the Planogram, or write a note to confirm anyway.</div>';
@@ -173,7 +174,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
       }
       var ev = c.vend_cycle_events.map(function(e){ return '<div class="ev"><b>'+esc(LABEL[e.stage]||e.stage)+'</b> · '+fdt(e.at)+(e.note?' · '+esc(e.note):'')+'</div>'; }).join('');
       $('detail').innerHTML = '<div class="sec-h"><div class="sec-n">+</div><span class="sec-t">'+esc(c.cycle_no)+' · '+esc(c.salesman||'')+'</span><span style="margin-left:auto"><button class="btn" id="d_x" style="height:36px">Close</button></span></div>' +
-        '<div style="font-size:12px;color:#78716c">D365 '+esc(c.d365_issue_ref||'—')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+(c.vend_settlements?' · Invoiced in <b>'+esc(c.vend_settlements.settlement_no)+'</b>':'')+'</div>' +
+        '<div style="font-size:12px;color:#78716c">D365 request <b>'+esc(c.d365_issue_ref||'—')+'</b>'+(c.d365_receipt_ref?' · D365 receipt <b>'+esc(c.d365_receipt_ref)+'</b>':'')+(c.notes?' · '+esc(c.notes):'')+(cancelled?' · <b style="color:#be123c">Cancelled</b>':'')+(c.vend_settlements?' · Invoiced in <b>'+esc(c.vend_settlements.settlement_no)+'</b>':'')+'</div>' +
         stepRow(META.stages, c.stage) + lines +
         (act ? '<div style="margin-top:14px;padding:14px;border:1.5px solid #84BD00;border-radius:12px;background:#fafdf3">'+(nxt?'<b style="font-size:13px">Next step: '+esc(LABEL[nxt])+'</b>':'')+act+'</div>' : '') +
         '<div style="margin-top:18px"><div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#57534e">History</div>'+ev+'</div>';
@@ -182,6 +183,7 @@ table.t tr.cl{cursor:pointer}table.t tr.cl:hover{background:#fafaf9}
       $('d_x').onclick = function(){ $('detail').style.display = 'none'; };
       if ($('a_go')) $('a_go').onclick = function(){
         var body = { to: nxt, note: $('a_note').value };
+        if (nxt === 'received') body.d365_receipt_ref = $('a_rref').value;
         var q = {}; [].forEach.call(document.querySelectorAll('.aq'), function(i){ q[i.getAttribute('data-c')] = Number(i.value); });
         if (Object.keys(q).length) body.qty = q;
         sendReq(id, body, $('a_go'));
