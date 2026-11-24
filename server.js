@@ -705,7 +705,7 @@ function buildDailyHtml(dayOrders, skuSummary, closingStock, machine, dateLabel,
   const totalCap   = CFG.products.reduce((s,p)=>s+p.slots.length*2,0);
 
   return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="icon" type="image/png" href="/icon-192.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Radwa Vending"><meta name="theme-color" content="#84BD00"></head>
 <body style="margin:0;padding:20px;background:#F8F1E7;font-family:Arial,sans-serif">
 <div style="max-width:640px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 30px rgba(0,0,0,.15)">
 
@@ -1441,7 +1441,7 @@ app.get('/', (req, res) => {
     STATE.errors.slice(0,10).map(e => `<div class="kv" style="color:#be123c"><span class="k">${fmtShort(e.time)}</span><span style="flex:1">${esc(e.msg)}</span></div>`).join('')) : '';
 
   res.send(`<!DOCTYPE html>
-<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="icon" type="image/png" href="/icon-192.png"><link rel="manifest" href="/manifest.webmanifest"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Radwa Vending"><meta name="theme-color" content="#84BD00">
 <meta http-equiv="refresh" content="60"><title>Radwa Vending Machine Monitor</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/ui.css">
@@ -1837,6 +1837,15 @@ app.get('/cycles', (req, res) => res.redirect('/refill'));
 require('./cycles')(app, { CFG, getOrdersCached, getProductCode, getSlots, applyToMachine, machineLock, roleName });
 app.get('/ui.css', (req, res) => res.sendFile(path.join(__dirname, 'ui.css')));
 app.get('/ui.js',  (req, res) => res.sendFile(path.join(__dirname, 'ui.js')));
+app.get('/apple-touch-icon.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
+app.get('/apple-touch-icon-precomposed.png', (req, res) => res.sendFile(path.join(__dirname, 'apple-touch-icon.png')));
+app.get('/icon-192.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-192.png')));
+app.get('/icon-512.png', (req, res) => res.sendFile(path.join(__dirname, 'icon-512.png')));
+app.get('/manifest.webmanifest', (req, res) => res.type('application/manifest+json').json({
+  name: 'Radwa Vending', short_name: 'Radwa Vending', start_url: '/', scope: '/', display: 'standalone',
+  background_color: '#ffffff', theme_color: '#84BD00',
+  icons: [{ src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' }],
+}));
 app.get('/logo.png', (req, res) => res.sendFile(path.join(__dirname, 'New Radwa Logo with text- trasperant.png')));
 
 // Diagnostic: probe replenishment (refill) endpoints. Read-only; only paths containing "replenish" are allowed.
